@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import readline
+import select
+import shutil
 import sys
 import textwrap
 import time
@@ -59,7 +62,15 @@ ROOT_DIR = Path(__file__).parent
 DATA_FILES_DIR = ROOT_DIR / "data" / "files"
 SNAPSHOTS_DIR = ROOT_DIR / "snapshots"
 FIXTURES_DIR = ROOT_DIR / "fixtures"
-CARD_WIDTH = 80
+CARD_WIDTH = 88
+
+
+def get_layout() -> tuple[int, str]:
+    """Calculate dynamic card width and left margin to center the UI."""
+    cols = shutil.get_terminal_size((CARD_WIDTH, 24)).columns
+    w = min(CARD_WIDTH, max(76, cols - 4))
+    pad = max(0, (cols - w) // 2)
+    return w, " " * pad
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -164,7 +175,7 @@ def _client() -> HydraDBClient:
 # Aesthetic Header & Claude Code Typography
 # ─────────────────────────────────────────────────────────────────────────────
 def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str = "") -> None:
-    """Print the aesthetic CONTEXT FLOW gradient banner."""
+    """Print the aesthetic CONTEXT FLOW gradient banner centered in the terminal."""
     banner_lines = [
         r"   ______ ____  _   __ ______ _______ _  __ ______    ______ __     ____ _       __ ",
         r"  / ____// __ \/ | / //_  __// ____/ | |/ //_  __/   / ____// /    / __ \ |     / / ",
@@ -172,6 +183,11 @@ def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str =
         r"/ /___ / /_/ // /|  /  / /  / /___  /   |  / /     / __/  / /___ / /_/ /| |/ |/ /   ",
         r"\____/ \____//_/ |_/  /_/  /_____/ /_/|_| /_/     /_/    /_____/ \____/ |__/|__/    ",
     ]
+
+    cols = shutil.get_terminal_size((CARD_WIDTH, 24)).columns
+    banner_w = len(banner_lines[0])
+    pad = max(0, (cols - banner_w) // 2)
+    indent = " " * pad
 
     print()
     for line in banner_lines:
@@ -184,14 +200,64 @@ def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str =
             g = int(220 * (1 - t) + 75 * t)
             b = int(170 * (1 - t) + 15 * t)
             row.append(f"\033[38;2;{r};{g};{b}m\033[1m{char}")
-        print("".join(row) + RESET)
-    print()
+        print(indent + "".join(row) + RESET)
+
+    subtitle = "✦ High-Efficiency Graph-RAG Engine with HydraDB ✦"
+    sub_pad = max(0, (cols - len(subtitle)) // 2)
+    print(f"\n{' ' * sub_pad}{PEACH}{BOLD}{subtitle}{RESET}")
+
+    tagline = "Deterministic Structural Paths  ·  Sub-Millisecond Retrieval  ·  Zero Hallucination"
+    tag_pad = max(0, (cols - len(tagline)) // 2)
+    print(f"{' ' * tag_pad}{GRAY}{tagline}{RESET}\n")
+
+
+def print_suggestions_card() -> None:
+    """Print centered interactive discovery card with 1-4 shortcuts and command cheat sheet."""
+    w, margin = get_layout()
+    title = "QUICK START & COMMAND CHEAT SHEET"
+    hint = "(type 1-4 or any slash command)"
+    dashes = max(2, w - len(title) - len(hint) - 7)
+    print(f"{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}{title}{RESET} {GRAY}{hint}{RESET} {BORDER}{'─' * dashes}╮{RESET}")
+    items = [
+        ("[1]", "Which change caused INC-1042 and who owns it?", "Root-Cause Analysis"),
+        ("[2]", "What are the five constant factors in the art of war?", "Sun Tzu Graph"),
+        ("[3]", "What is a relational schema and candidate key?", "Database Foundations"),
+        ("[4]", "/compare What are the five constant factors in the art of war?", "Token Benchmark"),
+    ]
+    for num, q, tag in items:
+        avail = w - len(num) - len(tag) - 8
+        print(f"{margin}{BORDER}│{RESET}  {WHITE_BOLD}{num}{RESET} {PEACH}{q[:avail]:<{avail}}{RESET} {GRAY}{tag}{RESET} {BORDER}│{RESET}")
+
+    print(f"{margin}{BORDER}├{'─' * (w - 2)}┤{RESET}")
+    shortcuts = [
+        ("/files", "Inspect active datasets"),
+        ("/fetch <url>", "Download external document"),
+        ("/paste", "Paste raw incident text"),
+        ("/compare <q>", "Benchmark token reduction"),
+        ("/snapshot", "Compile graph manifest"),
+        ("/help", "Open full command manual"),
+    ]
+    half = (len(shortcuts) + 1) // 2
+    for i in range(half):
+        c1_cmd, c1_desc = shortcuts[i]
+        c1_str = f"{WHITE_BOLD}{c1_cmd:<15}{RESET} {GRAY}{c1_desc:<24}{RESET}"
+        if i + half < len(shortcuts):
+            c2_cmd, c2_desc = shortcuts[i + half]
+            c2_str = f"{WHITE_BOLD}{c2_cmd:<15}{RESET} {GRAY}{c2_desc:<24}{RESET}"
+            line_content = f"{c1_str} │ {c2_str}"
+        else:
+            line_content = f"{c1_str} │ {' ' * 40}"
+        # Pad to border
+        pad_end = max(0, w - 8 - len(re.sub(r'\033\[[0-9;]*m', '', line_content)))
+        print(f"{margin}{BORDER}│{RESET}  {line_content}{' ' * pad_end} {BORDER}│{RESET}")
+
+    print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
 
 def print_commands() -> None:
     """Print the complete, aesthetic directory of slash commands."""
-    w = CARD_WIDTH
-    print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}COMMAND DIRECTORY{RESET} {BORDER}{'─' * (w - 22)}╮{RESET}")
+    w, margin = get_layout()
+    print(f"\n{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}COMMAND DIRECTORY{RESET} {BORDER}{'─' * (w - 22)}╮{RESET}")
 
     categories = [
         (
@@ -228,36 +294,36 @@ def print_commands() -> None:
     ]
 
     for cat_title, items in categories:
-        print(f"{BORDER}│{RESET}  {PEACH}{BOLD}{cat_title}{RESET}")
+        print(f"{margin}{BORDER}│{RESET}  {PEACH}{BOLD}{cat_title}{RESET}")
         for cmd, desc in items:
             cmd_styled = f"{WHITE_BOLD}{cmd:<21}{RESET}"
             dots = f"{GRAY}{desc}{RESET}"
             line = f"    {cmd_styled} {dots}"
-            print(f"{BORDER}│{RESET}{line}")
-        print(f"{BORDER}│{RESET}")
+            print(f"{margin}{BORDER}│{RESET}{line}")
+        print(f"{margin}{BORDER}│{RESET}")
 
-    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+    print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
 
 def print_evidence_packet(packet: EvidencePacket) -> None:
-    """Render a Claude-styled evidence card with clean text wrapping."""
-    w = CARD_WIDTH
+    """Render a Claude-styled evidence card with clean text wrapping centered in the terminal."""
+    w, margin = get_layout()
     ans_color = GREEN_BOLD if packet.answerability == "supported" else AMBER
     cost = packet.retrieval_stats.get("input_tokens", sum(f.token_cost for f in packet.facts))
     cand = packet.retrieval_stats.get("candidate_chunks", packet.retrieval_stats.get("candidate_artifacts", len(packet.facts)))
     latency = packet.retrieval_stats.get("latency_ms", "cached")
 
-    print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}EVIDENCE PACKET{RESET} {BORDER}{'─' * (w - 20)}╮{RESET}")
-    print(f"{BORDER}│{RESET}  Status: {ans_color}{packet.answerability.upper()}{RESET}  {GRAY}│{RESET}  Facts: {WHITE}{len(packet.facts)}{RESET}  {GRAY}│{RESET}  Candidates: {WHITE}{cand}{RESET}  {GRAY}│{RESET}  Latency: {WHITE}{latency}{RESET}")
-    print(f"{BORDER}├{'─' * (w - 2)}┤{RESET}")
+    print(f"\n{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}EVIDENCE PACKET{RESET} {BORDER}{'─' * (w - 20)}╮{RESET}")
+    print(f"{margin}{BORDER}│{RESET}  Status: {ans_color}{packet.answerability.upper()}{RESET}  {GRAY}│{RESET}  Facts: {WHITE}{len(packet.facts)}{RESET}  {GRAY}│{RESET}  Candidates: {WHITE}{cand}{RESET}  {GRAY}│{RESET}  Latency: {WHITE}{latency}{RESET}")
+    print(f"{margin}{BORDER}├{'─' * (w - 2)}┤{RESET}")
 
     if not packet.facts:
-        print(f"{BORDER}│{RESET}  {AMBER}No direct evidence facts retrieved for this query.{RESET}")
+        print(f"{margin}{BORDER}│{RESET}  {AMBER}No direct evidence facts retrieved for this query.{RESET}")
     else:
         for idx, fact in enumerate(packet.facts[:4], start=1):
             path_str = f" {PEACH}➔{RESET} ".join(fact.path) if fact.path else "direct"
             conf_color = GREEN if fact.confidence in ("verified", "retrieved") else AMBER
-            print(f"{BORDER}│{RESET}  {ORANGE_BOLD}◆ [{idx}]{RESET} {WHITE}{path_str}{RESET}")
+            print(f"{margin}{BORDER}│{RESET}  {ORANGE_BOLD}◆ [{idx}]{RESET} {WHITE}{path_str}{RESET}")
 
             # Cleanly wrap snippet
             clean_text = " ".join(fact.text.split())
@@ -265,27 +331,27 @@ def print_evidence_packet(packet: EvidencePacket) -> None:
                 clean_text = clean_text[:177] + "..."
             wrapped = textwrap.wrap(f'"{clean_text}"', width=w - 8)
             for s_line in wrapped:
-                print(f"{BORDER}│{RESET}    {GRAY}{s_line}{RESET}")
-            print(f"{BORDER}│{RESET}    {GRAY}Confidence:{RESET} {conf_color}{fact.confidence}{RESET} {GRAY}│ Score:{RESET} {fact.score:.2f} {GRAY}│ Source:{RESET} {fact.source}")
+                print(f"{margin}{BORDER}│{RESET}    {GRAY}{s_line}{RESET}")
+            print(f"{margin}{BORDER}│{RESET}    {GRAY}Confidence:{RESET} {conf_color}{fact.confidence}{RESET} {GRAY}│ Score:{RESET} {fact.score:.2f} {GRAY}│ Source:{RESET} {fact.source}")
             if idx < min(4, len(packet.facts)):
-                print(f"{BORDER}│{RESET}")
+                print(f"{margin}{BORDER}│{RESET}")
 
     if packet.contradictions:
-        print(f"{BORDER}│{RESET}")
+        print(f"{margin}{BORDER}│{RESET}")
         for item in packet.contradictions:
-            print(f"{BORDER}│{RESET}  {RED}⚠ Contradiction:{RESET} {item}")
+            print(f"{margin}{BORDER}│{RESET}  {RED}⚠ Contradiction:{RESET} {item}")
 
     if packet.uncertainty:
-        print(f"{BORDER}│{RESET}")
+        print(f"{margin}{BORDER}│{RESET}")
         for item in packet.uncertainty:
-            print(f"{BORDER}│{RESET}  {AMBER}⚠ Note:{RESET} {item}")
+            print(f"{margin}{BORDER}│{RESET}  {AMBER}⚠ Note:{RESET} {item}")
 
-    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}")
+    print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}")
 
 
 def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any = None) -> None:
-    """Render grounded answer with clean typography, line wrapping, and streaming effect."""
-    w = CARD_WIDTH
+    """Render grounded answer with clean typography, line wrapping, and streaming effect centered in terminal."""
+    w, margin = get_layout()
     provider = answer_obj.provider if answer_obj else "ContextFlow Structural Narrative"
 
     if answer_obj:
@@ -294,49 +360,49 @@ def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any
         from tui_textual import synthesize_fluid_answer
         raw_text = synthesize_fluid_answer(question, packet)
 
-    print(f"\n{BORDER}╭─{RESET} {WHITE_BOLD}GROUNDED SYNTHESIS{RESET} {GRAY}({provider}){RESET} {BORDER}{'─' * max(2, w - 26 - len(provider))}╮{RESET}")
+    print(f"\n{margin}{BORDER}╭─{RESET} {WHITE_BOLD}GROUNDED SYNTHESIS{RESET} {GRAY}({provider}){RESET} {BORDER}{'─' * max(2, w - 26 - len(provider))}╮{RESET}")
     for block in raw_text.splitlines():
         if not block.strip():
-            print(f"{BORDER}│{RESET}")
+            print(f"{margin}{BORDER}│{RESET}")
             continue
         wrapped = textwrap.wrap(block, width=w - 6)
         for w_line in wrapped:
-            sys.stdout.write(f"{BORDER}│{RESET}  ")
+            sys.stdout.write(f"{margin}{BORDER}│{RESET}  ")
             words = w_line.split(" ")
             for widx, word in enumerate(words):
                 sys.stdout.write(word + (" " if widx < len(words) - 1 else ""))
                 sys.stdout.flush()
-                time.sleep(0.010)
+                time.sleep(0.008)
             sys.stdout.write("\n")
-    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+    print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # File & Snapshot Utilities
 # ─────────────────────────────────────────────────────────────────────────────
 def list_files_and_snapshots() -> None:
-    """Print an aesthetic overview of data files and generated snapshots."""
+    """Print an aesthetic overview of data files and generated snapshots centered in terminal."""
     DATA_FILES_DIR.mkdir(parents=True, exist_ok=True)
     SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
     data_files = sorted([f for f in DATA_FILES_DIR.iterdir() if f.is_file() and not f.name.startswith(".")])
     snapshots = sorted([s for s in SNAPSHOTS_DIR.iterdir() if s.is_file() and s.name.endswith(".snapshot.json")])
 
-    w = CARD_WIDTH
-    print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}LOCAL FILES (data/files){RESET} {BORDER}{'─' * (w - 28)}╮{RESET}")
+    w, margin = get_layout()
+    print(f"\n{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}LOCAL FILES (data/files){RESET} {BORDER}{'─' * (w - 28)}╮{RESET}")
     if not data_files:
-        print(f"{BORDER}│{RESET}  {GRAY}No files found in data/files/. Add PDFs, text, or CSVs here.{RESET}")
+        print(f"{margin}{BORDER}│{RESET}  {GRAY}No files found in data/files/. Add PDFs, text, or CSVs here.{RESET}")
     else:
         for f in data_files:
             size_mb = f.stat().st_size / (1024 * 1024)
             size_str = f"{size_mb:.2f} MB" if size_mb >= 1 else f"{f.stat().st_size / 1024:.1f} KB"
             snap_path = SNAPSHOTS_DIR / f"{f.stem}.snapshot.json"
             snap_tag = f"{GREEN}● Snapshot ready{RESET}" if snap_path.exists() else f"{AMBER}○ No snapshot{RESET}"
-            print(f"{BORDER}│{RESET}  {WHITE_BOLD}{f.name:<34}{RESET} {GRAY}{size_str:>9}{RESET}  {snap_tag}")
+            print(f"{margin}{BORDER}│{RESET}  {WHITE_BOLD}{f.name:<38}{RESET} {GRAY}{size_str:>9}{RESET}  {snap_tag}")
 
-    print(f"{BORDER}├─{RESET} {PEACH}{BOLD}GENERATED SNAPSHOTS (snapshots/){RESET} {BORDER}{'─' * (w - 36)}┤{RESET}")
+    print(f"{margin}{BORDER}├─{RESET} {PEACH}{BOLD}GENERATED SNAPSHOTS (snapshots/){RESET} {BORDER}{'─' * (w - 36)}┤{RESET}")
     if not snapshots:
-        print(f"{BORDER}│{RESET}  {GRAY}No snapshots built yet. Run /snapshot <filename> to create one.{RESET}")
+        print(f"{margin}{BORDER}│{RESET}  {GRAY}No snapshots built yet. Run /snapshot <filename> to create one.{RESET}")
     else:
         for s in snapshots:
             size_kb = f"{s.stat().st_size / 1024:.1f} KB"
@@ -348,9 +414,9 @@ def list_files_and_snapshots() -> None:
                 details = f"{v_count} vertices · {e_count} edges"
             except Exception:
                 details = "manifest"
-            print(f"{BORDER}│{RESET}  {PEACH}{s.name:<32}{RESET} {GRAY}{size_kb:>8}{RESET}  {CYAN}{details}{RESET}")
+            print(f"{margin}{BORDER}│{RESET}  {PEACH}{s.name:<36}{RESET} {GRAY}{size_kb:>8}{RESET}  {CYAN}{details}{RESET}")
 
-    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+    print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
 
 def build_and_save_snapshot(target_name: str) -> None:
@@ -494,19 +560,65 @@ def run_cli_loop() -> int:
 
     print("\033[2J\033[H", end="")
     print_banner()
-    print(f"  {GRAY}Ask any question, or type {PEACH}/commands{GRAY} to browse datasets & tools.{RESET}\n")
+    print_suggestions_card()
 
+    ROTATING_SUGGESTIONS = [
+        "What are the five constant factors in the art of war?",
+        "Which change caused INC-1042 and who owns it?",
+        "What is a relational schema and candidate key?",
+        "/compare What are the five constant factors in the art of war?",
+        "/files (inspect active datasets)",
+        "/fetch <url> (download external PDF or doc into graph)",
+        "/paste (paste raw incident text)",
+        "What is the doctrine of deception in strategy?",
+    ]
+
+    s_idx = 0
     prompt_symbol = f"{ORANGE_BOLD}> {RESET}"
 
     while True:
-        try:
-            line = input(prompt_symbol).strip()
-        except (EOFError, KeyboardInterrupt):
-            print(f"\n{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
-            return 0
+        w, margin = get_layout()
+        curr_hint = ROTATING_SUGGESTIONS[s_idx % len(ROTATING_SUGGESTIONS)]
+
+        if sys.stdin.isatty():
+            # Display rotating suggestion indicator above prompt
+            sys.stdout.write(f"\r\033[K{margin}{GRAY}💡 Try:{RESET} {PEACH}\"{curr_hint}\"{RESET}  {GRAY}(enter 1-4 or ask anything){RESET}\n{margin}{prompt_symbol}")
+            sys.stdout.flush()
+
+            import select
+            r, _, _ = select.select([sys.stdin], [], [], 3.2)
+            if not r:
+                # Rotate suggestion smoothly
+                sys.stdout.write("\033[A\r\033[K")
+                sys.stdout.flush()
+                s_idx += 1
+                continue
+            else:
+                try:
+                    line = input().strip()
+                except (EOFError, KeyboardInterrupt):
+                    print(f"\n{margin}{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
+                    return 0
+        else:
+            try:
+                line = input(f"{margin}{prompt_symbol}").strip()
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{margin}{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
+                return 0
 
         if not line:
             continue
+
+        # Quick-pick 1-4 shortcuts
+        quick_map = {
+            "1": "Which change caused INC-1042 and who owns it?",
+            "2": "What are the five constant factors in the art of war?",
+            "3": "What is a relational schema and candidate key?",
+            "4": "/compare What are the five constant factors in the art of war?",
+        }
+        if line in quick_map:
+            line = quick_map[line]
+            print(f"{margin}{CYAN}➜ Running suggestion:{RESET} {WHITE_BOLD}{line}{RESET}\n")
 
         # ── Navigation & System Commands ─────────────────────────────────────
         if line in ("/quit", "/exit"):
@@ -524,6 +636,7 @@ def run_cli_loop() -> int:
         if line == "/clear":
             print("\033[2J\033[H", end="")
             print_banner()
+            print_suggestions_card()
             continue
 
         if line == "/files":

@@ -50,21 +50,27 @@ def synthesize_fluid_answer(question: str, packet: EvidencePacket) -> str:
         return "I could not find sufficient evidence in the active graph to answer this question."
 
     # 1. Incident handling
-    incident_types = ("change", "owner", "history", "runbook")
-    is_inc = any(f.source and any(it in f.source for it in incident_types) for f in packet.facts)
+    is_inc = any("incident" in f.text.lower() or "service" in f.text.lower() for f in packet.facts)
     if is_inc:
         sections = ["### Root Cause Analysis & Mitigation Guidance\n"]
+        seen_cats = set()
         for f in packet.facts:
-            src = f.source.replace("hydradb:", "").replace("snapshot:", "")
-            if "change" in src:
-                sections.append(f"- **Root Cause**: The causal change path is `{f.text}`.")
-            elif "owner" in src:
-                sections.append(f"- **Service Owner**: The affected service is managed by `{f.text}`.")
-            elif "history" in src:
-                sections.append(f"- **Precedent**: Similar prior incident resolved via `{f.text}`.")
-            elif "runbook" in src:
-                sections.append(f"- **Action**: Follow runbook instructions at `{f.text}`.")
-        return "\n".join(sections)
+            txt_low = f.text.lower()
+            src_low = (f.source or "").lower()
+            if ("commit" in txt_low or "deploy" in txt_low or "change" in src_low) and "root" not in seen_cats:
+                seen_cats.add("root")
+                sections.append(f"- **Root Cause**: `{f.text}`")
+            elif ("team" in txt_low or "team" in src_low or "owner" in src_low) and "owner" not in seen_cats:
+                seen_cats.add("owner")
+                sections.append(f"- **Service Owner**: `{f.text}`")
+            elif ("mitigation" in txt_low or "mit-" in txt_low or "history" in src_low) and "history" not in seen_cats:
+                seen_cats.add("history")
+                sections.append(f"- **Precedent / Prior Mitigation**: `{f.text}`")
+            elif "runbook" in txt_low and "runbook" not in seen_cats:
+                seen_cats.add("runbook")
+                sections.append(f"- **Runbook Action**: `{f.text}`")
+        if len(sections) > 1:
+            return "\n".join(sections)
 
     # 2. Document synthesis
     cleaned_facts = []
