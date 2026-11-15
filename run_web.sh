@@ -18,7 +18,7 @@ if [ ! -f "$PYTHON_BIN" ]; then
     PYTHON_BIN="python3"
 fi
 
-PORT="${PORT:-7681}"
+PORT="${PORT:-10000}"
 TARGET_SCRIPT="tui.py"
 
 if [ "$1" = "textual" ] || [ "$1" = "--textual" ]; then
@@ -38,15 +38,18 @@ fi
 # Small grace period for socket release
 sleep 0.2
 
+export TTY_ATTACHED=1
+
 echo "=========================================================="
 echo " Starting ContextFlow Web Terminal"
 echo " Target : $APP_DIR/$TARGET_SCRIPT"
-echo " URL    : http://127.0.0.1:${PORT}"
+echo " Port   : ${PORT}"
 echo " Theme  : Obsidian Dark (#0b0c10) + HydraDB Orange (#FF5719)"
 echo "=========================================================="
 
 exec ttyd \
   -p "$PORT" \
+  -i 0.0.0.0 \
   -W \
   -w "$APP_DIR" \
   -t fontSize=15 \

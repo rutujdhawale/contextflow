@@ -856,6 +856,17 @@ def run_cli_loop() -> int:
 
 def main() -> int:
     """Launch modern Textual TUI by default, or CLI mode for scripts/pipes."""
+    # Cloud web service auto-bridge (Render, Railway, Fly.io)
+    is_cloud_web = (os.getenv("RENDER") or os.getenv("PORT")) and not sys.stdin.isatty() and not os.getenv("TTY_ATTACHED")
+    if is_cloud_web:
+        import shutil
+        ttyd_bin = shutil.which("ttyd")
+        web_runner = Path(__file__).parent / "run_web.sh"
+        if ttyd_bin and web_runner.exists():
+            port = os.getenv("PORT", "10000")
+            print(f"Cloud container detected without TTY. Starting ContextFlow Web Terminal on port {port}...")
+            os.execv(str(web_runner), [str(web_runner)])
+
     if "--cli" in sys.argv or not sys.stdin.isatty():
         return run_cli_loop()
     try:
