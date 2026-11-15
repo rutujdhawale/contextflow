@@ -62,15 +62,12 @@ ROOT_DIR = Path(__file__).parent
 DATA_FILES_DIR = ROOT_DIR / "data" / "files"
 SNAPSHOTS_DIR = ROOT_DIR / "snapshots"
 FIXTURES_DIR = ROOT_DIR / "fixtures"
-CARD_WIDTH = 88
+CARD_WIDTH = 84
 
 
 def get_layout() -> tuple[int, str]:
-    """Calculate dynamic card width and left margin to center the UI."""
-    cols = shutil.get_terminal_size((CARD_WIDTH, 24)).columns
-    w = min(CARD_WIDTH, max(76, cols - 4))
-    pad = max(0, (cols - w) // 2)
-    return w, " " * pad
+    """Return standard clean card width without arbitrary indent."""
+    return CARD_WIDTH, ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -175,7 +172,7 @@ def _client() -> HydraDBClient:
 # Aesthetic Header & Claude Code Typography
 # ─────────────────────────────────────────────────────────────────────────────
 def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str = "") -> None:
-    """Print the aesthetic CONTEXT FLOW gradient banner centered in the terminal."""
+    """Print the aesthetic CONTEXT FLOW gradient banner."""
     banner_lines = [
         r"   ______ ____  _   __ ______ _______ _  __ ______    ______ __     ____ _       __ ",
         r"  / ____// __ \/ | / //_  __// ____/ | |/ //_  __/   / ____// /    / __ \ |     / / ",
@@ -183,11 +180,6 @@ def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str =
         r"/ /___ / /_/ // /|  /  / /  / /___  /   |  / /     / __/  / /___ / /_/ /| |/ |/ /   ",
         r"\____/ \____//_/ |_/  /_/  /_____/ /_/|_| /_/     /_/    /_____/ \____/ |__/|__/    ",
     ]
-
-    cols = shutil.get_terminal_size((CARD_WIDTH, 24)).columns
-    banner_w = len(banner_lines[0])
-    pad = max(0, (cols - banner_w) // 2)
-    indent = " " * pad
 
     print()
     for line in banner_lines:
@@ -200,58 +192,49 @@ def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str =
             g = int(220 * (1 - t) + 75 * t)
             b = int(170 * (1 - t) + 15 * t)
             row.append(f"\033[38;2;{r};{g};{b}m\033[1m{char}")
-        print(indent + "".join(row) + RESET)
+        print("".join(row) + RESET)
 
-    subtitle = "✦ High-Efficiency Graph-RAG Engine with HydraDB ✦"
-    sub_pad = max(0, (cols - len(subtitle)) // 2)
-    print(f"\n{' ' * sub_pad}{PEACH}{BOLD}{subtitle}{RESET}")
-
-    tagline = "Deterministic Structural Paths  ·  Sub-Millisecond Retrieval  ·  Zero Hallucination"
-    tag_pad = max(0, (cols - len(tagline)) // 2)
-    print(f"{' ' * tag_pad}{GRAY}{tagline}{RESET}\n")
+    print(f"\n{PEACH}{BOLD}✦ High-Efficiency Graph-RAG Engine with HydraDB ✦{RESET}")
+    print(f"{GRAY}Deterministic Structural Paths  ·  Sub-Millisecond Retrieval  ·  Zero Hallucination{RESET}\n")
 
 
 def print_suggestions_card() -> None:
-    """Print centered interactive discovery card with 1-4 shortcuts and command cheat sheet."""
-    w, margin = get_layout()
+    """Print interactive discovery card with 1-4 shortcuts and command cheat sheet."""
+    w, _ = get_layout()
     title = "QUICK START & COMMAND CHEAT SHEET"
-    hint = "(type 1-4 or any slash command)"
-    dashes = max(2, w - len(title) - len(hint) - 7)
-    print(f"{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}{title}{RESET} {GRAY}{hint}{RESET} {BORDER}{'─' * dashes}╮{RESET}")
+    hint = "(type 1-4 or any /cmd)"
+    dashes = max(2, w - 3 - len(title) - 1 - len(hint) - 2)
+    print(f"{BORDER}╭─{RESET} {ORANGE_BOLD}{title}{RESET} {GRAY}{hint}{RESET} {BORDER}{'─' * dashes}╮{RESET}")
     items = [
         ("[1]", "Which change caused INC-1042 and who owns it?", "Root-Cause Analysis"),
         ("[2]", "What are the five constant factors in the art of war?", "Sun Tzu Graph"),
-        ("[3]", "What is a relational schema and candidate key?", "Database Foundations"),
+        ("[3]", "What are database schema constraints & dependencies?", "System Architecture"),
         ("[4]", "/compare What are the five constant factors in the art of war?", "Token Benchmark"),
     ]
     for num, q, tag in items:
-        avail = w - len(num) - len(tag) - 8
-        print(f"{margin}{BORDER}│{RESET}  {WHITE_BOLD}{num}{RESET} {PEACH}{q[:avail]:<{avail}}{RESET} {GRAY}{tag}{RESET} {BORDER}│{RESET}")
+        print(f"{BORDER}│{RESET}  {WHITE_BOLD}{num}{RESET} {PEACH}{q[:54]:<54}{RESET} {GRAY}{tag[:19]:<19}{RESET}  {BORDER}│{RESET}")
 
-    print(f"{margin}{BORDER}├{'─' * (w - 2)}┤{RESET}")
+    print(f"{BORDER}├{'─' * (w - 2)}┤{RESET}")
     shortcuts = [
-        ("/files", "Inspect active datasets"),
-        ("/fetch <url>", "Download external document"),
-        ("/paste", "Paste raw incident text"),
-        ("/compare <q>", "Benchmark token reduction"),
-        ("/snapshot", "Compile graph manifest"),
-        ("/help", "Open full command manual"),
+        ("/files", "Active datasets"),
+        ("/snapshot <path>", "Compile file/path"),
+        ("/compare <q>", "Token benchmark"),
+        ("/status", "Graph telemetry"),
+        ("/clear", "Clear screen"),
+        ("/help", "Full command manual"),
     ]
     half = (len(shortcuts) + 1) // 2
     for i in range(half):
         c1_cmd, c1_desc = shortcuts[i]
-        c1_str = f"{WHITE_BOLD}{c1_cmd:<15}{RESET} {GRAY}{c1_desc:<24}{RESET}"
+        c1_str = f"{WHITE_BOLD}{c1_cmd:<18}{RESET} {GRAY}{c1_desc:<18}{RESET}"
         if i + half < len(shortcuts):
             c2_cmd, c2_desc = shortcuts[i + half]
-            c2_str = f"{WHITE_BOLD}{c2_cmd:<15}{RESET} {GRAY}{c2_desc:<24}{RESET}"
-            line_content = f"{c1_str} │ {c2_str}"
+            c2_str = f"{WHITE_BOLD}{c2_cmd:<18}{RESET} {GRAY}{c2_desc:<19}{RESET}"
         else:
-            line_content = f"{c1_str} │ {' ' * 40}"
-        # Pad to border
-        pad_end = max(0, w - 8 - len(re.sub(r'\033\[[0-9;]*m', '', line_content)))
-        print(f"{margin}{BORDER}│{RESET}  {line_content}{' ' * pad_end} {BORDER}│{RESET}")
+            c2_str = f"{' ' * 38}"
+        print(f"{BORDER}│{RESET}  {c1_str} {BORDER}│{RESET} {c2_str}  {BORDER}│{RESET}")
 
-    print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
 
 def print_commands() -> None:
@@ -420,7 +403,7 @@ def list_files_and_snapshots() -> None:
 
 
 def build_and_save_snapshot(target_name: str) -> None:
-    """Generate a HydraDB snapshot for a file in data/files or fixture."""
+    """Generate a HydraDB snapshot for a file path, file in data/files, or fixture."""
     SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     if target_name in ("all", "*"):
         data_files = [f for f in DATA_FILES_DIR.iterdir() if f.is_file() and not f.name.startswith(".")]
@@ -438,7 +421,24 @@ def build_and_save_snapshot(target_name: str) -> None:
                 print(f"  {RED}✖{RESET} {cand.name}: {exc}")
         return
 
-    # Check data/files
+    # 1. Direct file path check (absolute or relative)
+    cand_path = Path(target_name).expanduser()
+    if cand_path.is_file():
+        # Copy to data/files if not already there
+        target_in_data = DATA_FILES_DIR / cand_path.name
+        if cand_path.resolve() != target_in_data.resolve():
+            shutil.copy2(cand_path, target_in_data)
+        print(f"{CYAN}Extracting graph and building snapshot for {cand_path.name}...{RESET}")
+        t0 = time.perf_counter()
+        snap = build_file_snapshot(cand_path)
+        out_path = SNAPSHOTS_DIR / f"{cand_path.stem}.snapshot.json"
+        out_path.write_text(json.dumps(snap, indent=2) + "\n", encoding="utf-8")
+        dt = (time.perf_counter() - t0) * 1000
+        print(f"{GREEN}✔ Snapshot created:{RESET} {PEACH}{out_path.name}{RESET} in {dt:.0f}ms")
+        print(f"  Vertices: {snap['counts']['vertices']} · Edges: {snap['counts']['edges']}")
+        return
+
+    # 2. Check data/files
     file_path = DATA_FILES_DIR / target_name
     if not file_path.exists():
         matches = [f for f in DATA_FILES_DIR.iterdir() if f.name.lower().startswith(target_name.lower())]
@@ -456,7 +456,7 @@ def build_and_save_snapshot(target_name: str) -> None:
         print(f"  Vertices: {snap['counts']['vertices']} · Edges: {snap['counts']['edges']}")
         return
 
-    # Check fixtures
+    # 3. Check fixtures
     fixture_path = FIXTURES_DIR / target_name
     if not fixture_path.exists() and not target_name.endswith(".json"):
         fixture_path = FIXTURES_DIR / f"{target_name}.json"
@@ -468,8 +468,8 @@ def build_and_save_snapshot(target_name: str) -> None:
         print(f"{GREEN}✔ Snapshot created:{RESET} {PEACH}{out_path.name}{RESET} ({snap['counts']['vertices']}v, {snap['counts']['edges']}e)")
         return
 
-    print(f"{RED}File not found in data/files/ or fixtures/: {target_name}{RESET}")
-    print(f"{GRAY}Type /files to see available files.{RESET}")
+    print(f"{RED}File not found at path, in data/files/, or in fixtures/: {target_name}{RESET}")
+    print(f"{GRAY}Usage: /snapshot <path/to/file> or /snapshot all. Type /files to list datasets.{RESET}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -579,7 +579,7 @@ def run_cli_loop() -> int:
         quick_map = {
             "1": "Which change caused INC-1042 and who owns it?",
             "2": "What are the five constant factors in the art of war?",
-            "3": "What is a relational schema and candidate key?",
+            "3": "What are the database schema constraints and dependencies?",
             "4": "/compare What are the five constant factors in the art of war?",
         }
         if line in quick_map:
@@ -587,7 +587,7 @@ def run_cli_loop() -> int:
             print(f"{margin}{CYAN}➜ Running suggestion:{RESET} {WHITE_BOLD}{line}{RESET}\n")
 
         # ── Navigation & System Commands ─────────────────────────────────────
-        if line in ("/quit", "/exit"):
+        if line.lower() in ("/quit", "/exit", "quit", "exit", "q"):
             print(f"{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
             return 0
 
@@ -659,9 +659,16 @@ def run_cli_loop() -> int:
                 print(f"{GREEN}✔ Snapshot actively routed and ready to query!{RESET}")
             continue
 
-        if line.startswith("/snapshot"):
-            arg = line[9:].strip() or "all"
+        if line.startswith("/snapshot") or line.startswith("/add"):
+            parts = line.split(maxsplit=1)
+            arg = parts[1].strip() if len(parts) > 1 else "all"
             build_and_save_snapshot(arg)
+            # Auto-reload available snapshots into memory
+            for sf in SNAPSHOTS_DIR.glob("*.snapshot.json"):
+                try:
+                    available_snapshots[sf.stem] = LocalSnapshotSession.load(sf)
+                except Exception:
+                    pass
             continue
 
         if line.startswith("/load"):
