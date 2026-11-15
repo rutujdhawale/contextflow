@@ -25,6 +25,19 @@ if [ "$1" = "textual" ] || [ "$1" = "--textual" ]; then
     TARGET_SCRIPT="tui_textual.py"
 fi
 
+# Clean up any lingering process on the target port to prevent (-1 98) EADDRINUSE
+if command -v fuser >/dev/null 2>&1; then
+    fuser -k "${PORT}/tcp" 2>/dev/null || true
+elif command -v lsof >/dev/null 2>&1; then
+    PIDS=$(lsof -ti :"$PORT" 2>/dev/null || true)
+    if [ -n "$PIDS" ]; then
+        kill -9 $PIDS 2>/dev/null || true
+    fi
+fi
+
+# Small grace period for socket release
+sleep 0.2
+
 echo "=========================================================="
 echo " Starting ContextFlow Web Terminal"
 echo " Target : $APP_DIR/$TARGET_SCRIPT"

@@ -207,6 +207,8 @@ def print_commands() -> None:
             "DATA & SNAPSHOTS",
             [
                 ("/files", "Inspect files in data/files & snapshot readiness"),
+                ("/fetch <url>", "Download document/PDF from URL and build snapshot"),
+                ("/paste <file>", "Paste text into data/files/ and build snapshot"),
                 ("/snapshot <file>", "Build offline HydraDB snapshot manifest for a file"),
                 ("/snapshot all", "Batch-build snapshot manifests for all files in data/files"),
                 ("/load <name>", "Switch active dataset (e.g. /load ArtOfWar or /load incidents)"),
@@ -412,6 +414,8 @@ SLASH_COMMANDS = [
     "/compare ",
     "/query ",
     "/files",
+    "/fetch ",
+    "/paste ",
     "/snapshot ",
     "/load ",
     "/ingest ",
@@ -523,6 +527,56 @@ def run_cli_loop() -> int:
 
         if line == "/files":
             list_files_and_snapshots()
+            continue
+
+        if line.startswith("/fetch"):
+            url = line[6:].strip()
+            if not url:
+                print(f"{AMBER}Usage: /fetch <http/https URL to file or PDF>{RESET}")
+                continue
+            from urllib.parse import urlparse
+            from urllib.request import urlopen, Request
+            fname = Path(urlparse(url).path).name or "downloaded_file.txt"
+            target = DATA_FILES_DIR / fname
+            print(f"{CYAN}Downloading {url} ...{RESET}")
+            try:
+                req = Request(url, headers={"User-Agent": "ContextFlow/2.0"})
+                with urlopen(req, timeout=30) as resp:
+                    target.write_bytes(resp.read())
+                print(f"{GREEN}✔ Saved to:{RESET} {target.name} ({target.stat().st_size / 1024:.1f} KB)")
+                build_and_save_snapshot(target.name)
+                snap_file = SNAPSHOTS_DIR / f"{target.stem}.snapshot.json"
+                if snap_file.exists():
+                    available_snapshots[snap_file.stem] = LocalSnapshotSession.load(snap_file)
+                    print(f"{GREEN}✔ Snapshot actively routed and ready to query!{RESET}")
+            except Exception as e:
+                print(f"{RED}Download failed:{RESET} {e}")
+            continue
+
+        if line.startswith("/paste"):
+            fname = line[6:].strip() or "pasted_notes.txt"
+            target = DATA_FILES_DIR / fname
+            print(f"{CYAN}Enter/paste text below. Type {WHITE_BOLD}EOF{CYAN} on a new line or press Ctrl-D when done:{RESET}")
+            p_lines = []
+            try:
+                while True:
+                    p_line = input()
+                    if p_line.strip() == "EOF":
+                        break
+                    p_lines.append(p_line)
+            except (EOFError, KeyboardInterrupt):
+                pass
+            content = "\n".join(p_lines).strip()
+            if not content:
+                print(f"{AMBER}No content received.{RESET}")
+                continue
+            target.write_text(content, encoding="utf-8")
+            print(f"{GREEN}✔ Saved to:{RESET} {target.name} ({len(content)} characters)")
+            build_and_save_snapshot(target.name)
+            snap_file = SNAPSHOTS_DIR / f"{target.stem}.snapshot.json"
+            if snap_file.exists():
+                available_snapshots[snap_file.stem] = LocalSnapshotSession.load(snap_file)
+                print(f"{GREEN}✔ Snapshot actively routed and ready to query!{RESET}")
             continue
 
         if line.startswith("/snapshot"):
