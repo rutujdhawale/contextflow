@@ -411,13 +411,7 @@ def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any
             continue
         wrapped = textwrap.wrap(block, width=w - 6)
         for w_line in wrapped:
-            sys.stdout.write(f"{margin}{BORDER}│{RESET}  ")
-            words = w_line.split(" ")
-            for widx, word in enumerate(words):
-                sys.stdout.write(word + (" " if widx < len(words) - 1 else ""))
-                sys.stdout.flush()
-                time.sleep(0.005)
-            sys.stdout.write("\n")
+            print(f"{margin}{BORDER}│{RESET}  {w_line}")
     print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
 

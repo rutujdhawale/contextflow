@@ -51,5 +51,7 @@ exec ttyd \
   -t fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace" \
   -t letterSpacing=0 \
   -t lineHeight=1.25 \
+  -t scrollback=100000 \
+  -t smoothScrollDuration=0 \
   -t "theme={\"background\": \"#090a0f\", \"foreground\": \"#f0f2f8\", \"cursor\": \"#FF5719\", \"selectionBackground\": \"#ff571933\"}" \
   "$PYTHON_BIN" "$APP_DIR/tui.py"
