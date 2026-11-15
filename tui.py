@@ -458,14 +458,32 @@ def main() -> int:
     load_dotenv()
     setup_completer()
 
-    mode = "live"
+    mode = "local"
     hydradb = _client()
+    try:
+        hydradb.query("RETURN 1")
+        mode = "live"
+    except Exception:
+        mode = "local"
 
-    # Default dataset: load incidents or ArtOfWar if available
-    active_dataset = "incidents.json"
-    active_session: LocalSnapshotSession | None = None
+    # Preload all snapshots from snapshots/ directory
+    available_snapshots: dict[str, LocalSnapshotSession] = {}
+    for sf in SNAPSHOTS_DIR.glob("*.snapshot.json"):
+        try:
+            available_snapshots[sf.stem] = LocalSnapshotSession.load(sf)
+        except Exception:
+            pass
+
+    # Default dataset: load first document snapshot if available, or incidents
+    active_dataset = "ArtOfWar.snapshot.json" if "ArtOfWar.snapshot" in available_snapshots else "incidents.json"
+    active_session: LocalSnapshotSession | None = (
+        available_snapshots.get("ArtOfWar.snapshot")
+        or available_snapshots.get("incidents.snapshot")
+        or None
+    )
+
     default_fixture = FIXTURES_DIR / "incidents.json"
-    if default_fixture.exists():
+    if active_session is None and default_fixture.exists():
         try:
             active_session = LocalSnapshotSession.load(default_fixture)
         except Exception:
@@ -707,33 +725,56 @@ def main() -> int:
             t0 = time.perf_counter()
             packet: EvidencePacket | None = None
 
+            is_incident = any(k in question.lower() for k in ("inc-", "incident", "deploy-", "checkout-api", "runbook", "rollback"))
+
+            # 1. Live mode if HydraDB is active
             if mode == "live":
                 try:
-                    if active_session and active_session.kind == "document_snapshot":
+                    if is_incident:
+                        packet = HydraDBContextCompiler(hydradb).compile(question)
+                    elif active_session and active_session.kind == "document_snapshot":
                         from multimodal_pipeline import retrieve as mm_retrieve
-                        packet = mm_retrieve(hydradb, active_session.source_path.name, question)
+                        doc_target = active_session.source_path.stem.replace(".snapshot", "") + ".pdf"
+                        packet = mm_retrieve(hydradb, doc_target, question)
                     else:
                         packet = HydraDBContextCompiler(hydradb).compile(question)
-                except HydraDBError as db_err:
-                    print(f"{AMBER}HydraDB live query failed or unreachable:{RESET} {db_err}")
-                    if active_session:
-                        print(f"{GRAY}Falling back to local snapshot retrieval...{RESET}")
-                        packet = active_session.retrieve_document(question)
-                    else:
-                        raise
+                except Exception:
+                    packet = None
 
-            else:
-                # Local Mode
-                if active_session:
-                    if active_session.kind == "document_snapshot":
-                        packet = active_session.retrieve_document(question)
-                    elif local_compiler:
-                        packet = local_compiler.compile(question)
-                elif local_compiler:
+            # 2. Snapshot / Local Retrieval
+            if packet is None or not packet.facts:
+                if is_incident and local_compiler:
                     packet = local_compiler.compile(question)
                 else:
-                    print(f"{RED}No active snapshot or compiler loaded.{RESET}")
-                    continue
+                    # Search across all loaded snapshots so the highest-scoring document wins
+                    all_candidates: list[Fact] = []
+                    for s_name, s_sess in available_snapshots.items():
+                        if s_sess.kind == "document_snapshot":
+                            p = s_sess.retrieve_document(question, max_facts=4)
+                            all_candidates.extend(p.facts)
+
+                    if all_candidates:
+                        all_candidates.sort(key=lambda f: f.score, reverse=True)
+                        top_facts = all_candidates[:4]
+                        if top_facts and top_facts[0].score > 0:
+                            context = "\n".join(f"- {fact.text} [citation: {' -> '.join(fact.path)}]" for fact in top_facts)
+                            packet = EvidencePacket(
+                                context=context,
+                                facts=top_facts,
+                                contradictions=[],
+                                uncertainty=[],
+                                answerability="supported",
+                                retrieval_stats={
+                                    "matched_sources": list(set(f.source for f in top_facts)),
+                                    "candidate_chunks": len(all_candidates),
+                                    "selected_chunks": len(top_facts),
+                                    "snapshot_consistency": "atomic (offline snapshot)",
+                                },
+                            )
+
+                # 3. Fallback to incident compiler if not found in docs
+                if (packet is None or not packet.facts) and local_compiler:
+                    packet = local_compiler.compile(question)
 
             retrieval_ms = (time.perf_counter() - t0) * 1000
             if packet:
