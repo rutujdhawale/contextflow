@@ -3,20 +3,31 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=7681 \
+    PORT=10000 \
     PATHCONTEXT_HYDRADB_URL=http://hydradb:8443 \
     PATHCONTEXT_GRAPH_ID=default \
     PATHCONTEXT_CELL_ID=cell-0
 
 WORKDIR /app
 
-# Install system dependencies (Poppler for PDF text extraction, ttyd for web TUI, psmisc for socket mgmt)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     curl \
-    ttyd \
+    ca-certificates \
     psmisc \
     && rm -rf /var/lib/apt/lists/*
+
+# Install official standalone ttyd binary (supports both x86_64 and arm64)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 -o /usr/local/bin/ttyd ; \
+    elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
+        curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.aarch64 -o /usr/local/bin/ttyd ; \
+    else \
+        curl -fsSL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 -o /usr/local/bin/ttyd ; \
+    fi && \
+    chmod +x /usr/local/bin/ttyd
 
 # Install Python requirements
 COPY requirements.txt .
