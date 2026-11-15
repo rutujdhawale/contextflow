@@ -49,8 +49,11 @@ def synthesize_fluid_answer(question: str, packet: EvidencePacket) -> str:
     if not packet.facts:
         return "I could not find sufficient evidence in the active graph to answer this question."
 
-    # 1. Incident handling
-    is_inc = any("incident" in f.text.lower() or "service" in f.text.lower() for f in packet.facts)
+    # 1. Incident handling (only for actual incident causal graphs)
+    is_inc = any(
+        ("incident:" in str(f.path).lower() or "inc-" in str(f.path).lower() or "inc-" in f.text.lower() or "deploy-" in str(f.path).lower())
+        for f in packet.facts
+    )
     if is_inc:
         sections = ["### Root Cause Analysis & Mitigation Guidance\n"]
         seen_cats = set()

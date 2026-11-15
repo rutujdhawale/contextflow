@@ -233,9 +233,7 @@ def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str =
             b = int(170 * (1 - t) + 15 * t)
             row.append(f"\033[38;2;{r};{g};{b}m\033[1m{char}")
         print("".join(row) + RESET)
-
-    print(f"\n{PEACH}{BOLD}✦ High-Efficiency Graph-RAG Engine with HydraDB ✦{RESET}")
-    print(f"{GRAY}Deterministic Structural Paths  ·  Sub-Millisecond Retrieval  ·  Zero Hallucination{RESET}\n")
+    print()
 
 
 def print_suggestions_card() -> None:
@@ -261,7 +259,6 @@ def print_suggestions_card() -> None:
         ("/files", "Active datasets"),
         ("/snapshot <path>", "Compile file/path"),
         ("/compare <q>", "Token benchmark"),
-        ("/status", "Graph telemetry"),
         ("/clear", "Clear screen"),
         ("/help", "Full command manual"),
     ]
@@ -310,7 +307,6 @@ def print_commands() -> None:
             "CONFIGURATION & SESSION",
             [
                 ("/mode <live|local>", "Toggle between live HydraDB backend and local snapshot"),
-                ("/status", "Display connection ping, graph telemetry, and epoch bookmarks"),
                 ("/clear", "Clear terminal screen and repaint banner"),
                 ("/help", "Show quick reference card"),
                 ("/quit, /exit", "Exit the console"),
@@ -375,7 +371,7 @@ def print_evidence_packet(packet: EvidencePacket) -> None:
 
 
 def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any = None) -> None:
-    """Render grounded answer with clean typography, line wrapping, and streaming effect centered in terminal."""
+    """Render grounded answer with node traversal path, clean typography, line wrapping, and streaming effect."""
     w, margin = get_layout()
     provider = answer_obj.provider if answer_obj else "ContextFlow Structural Narrative"
 
@@ -386,6 +382,29 @@ def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any
         raw_text = synthesize_fluid_answer(question, packet)
 
     print(f"\n{margin}{BORDER}╭─{RESET} {WHITE_BOLD}GROUNDED SYNTHESIS{RESET} {GRAY}({provider}){RESET} {BORDER}{'─' * max(2, w - 26 - len(provider))}╮{RESET}")
+
+    # Brief Node Traversal Path
+    traversal_paths = []
+    for f in packet.facts:
+        if f.path and len(f.path) > 1:
+            p_str = " ➔ ".join(f.path)
+            if p_str not in traversal_paths:
+                traversal_paths.append(p_str)
+        elif f.path:
+            traversal_paths.append(f.path[0])
+
+    if traversal_paths:
+        title_p = "Node Traversal Path:"
+        pad_t = max(0, w - 4 - len(title_p))
+        print(f"{margin}{BORDER}│{RESET}  {ORANGE_BOLD}{title_p}{RESET}{' ' * pad_t}{BORDER}│{RESET}")
+        for p in traversal_paths[:3]:
+            clean_p = p
+            if len(clean_p) > w - 12:
+                clean_p = clean_p[:w - 15] + "..."
+            pad = max(0, w - 10 - len(clean_p))
+            print(f"{margin}{BORDER}│{RESET}    {CYAN}➜{RESET} {WHITE}{clean_p}{RESET}{' ' * pad}  {BORDER}│{RESET}")
+        print(f"{margin}{BORDER}├{'─' * (w - 2)}┤{RESET}")
+
     for block in raw_text.splitlines():
         if not block.strip():
             print(f"{margin}{BORDER}│{RESET}")
@@ -397,7 +416,7 @@ def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any
             for widx, word in enumerate(words):
                 sys.stdout.write(word + (" " if widx < len(words) - 1 else ""))
                 sys.stdout.flush()
-                time.sleep(0.008)
+                time.sleep(0.005)
             sys.stdout.write("\n")
     print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
@@ -929,6 +948,10 @@ def run_cli_loop() -> int:
                 avail_g = w - 6
                 print(f"{BORDER}│{RESET}  {GREEN_BOLD}{gain_str[:avail_g]:<{avail_g}}{RESET}  {BORDER}│{RESET}")
                 print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+
+                # Synthesize and print the grounded answer with the traversed graph path
+                print(f"{CYAN}● Synthesizing grounded answer from traversed graph path...{RESET}")
+                print_grounded_answer(question, after)
             except Exception as err:
                 print(f"{RED}Comparison failed:{RESET} {err}")
             continue
