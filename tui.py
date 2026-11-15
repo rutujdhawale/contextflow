@@ -279,22 +279,13 @@ def print_evidence_packet(packet: EvidencePacket) -> None:
 def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any = None) -> None:
     """Render grounded answer with clean typography, line wrapping, and streaming effect."""
     w = CARD_WIDTH
-    provider = answer_obj.provider if answer_obj else "Grounded Graph Evidence"
+    provider = answer_obj.provider if answer_obj else "ContextFlow Structural Narrative"
 
     if answer_obj:
         raw_text = answer_obj.text.strip()
     else:
-        # Structured fallback for offline/local mode
-        sections = []
-        for idx, fact in enumerate(packet.facts[:3], start=1):
-            path_label = " ➔ ".join(fact.path) if fact.path else fact.source
-            clean_snippet = " ".join(fact.text.split())
-            if len(clean_snippet) > 220:
-                clean_snippet = clean_snippet[:217] + "..."
-            sections.append(f"[{idx}] {path_label}\n\"{clean_snippet}\"")
-        raw_text = "\n\n".join(sections) if sections else "No supported facts found."
-        if packet.uncertainty:
-            raw_text += "\n\nNotes: " + " ".join(packet.uncertainty)
+        from tui_textual import synthesize_fluid_answer
+        raw_text = synthesize_fluid_answer(question, packet)
 
     print(f"\n{BORDER}╭─{RESET} {WHITE_BOLD}GROUNDED SYNTHESIS{RESET} {GRAY}({provider}){RESET} {BORDER}{'─' * max(2, w - 26 - len(provider))}╮{RESET}")
     for block in raw_text.splitlines():
@@ -308,7 +299,7 @@ def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any
             for widx, word in enumerate(words):
                 sys.stdout.write(word + (" " if widx < len(words) - 1 else ""))
                 sys.stdout.flush()
-                time.sleep(0.012)
+                time.sleep(0.010)
             sys.stdout.write("\n")
     print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
@@ -454,7 +445,7 @@ def setup_completer():
 # ─────────────────────────────────────────────────────────────────────────────
 # Main Application Loop
 # ─────────────────────────────────────────────────────────────────────────────
-def main() -> int:
+def run_cli_loop() -> int:
     load_dotenv()
     setup_completer()
 
@@ -802,6 +793,19 @@ def main() -> int:
             print(f"{RED}Error:{RESET} {err}")
 
     return 0
+
+
+def main() -> int:
+    """Launch modern Textual TUI by default, or CLI mode for scripts/pipes."""
+    if "--cli" in sys.argv or not sys.stdin.isatty():
+        return run_cli_loop()
+    try:
+        from tui_textual import ContextFlowApp
+        app = ContextFlowApp()
+        app.run()
+        return 0
+    except Exception:
+        return run_cli_loop()
 
 
 if __name__ == "__main__":
