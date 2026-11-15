@@ -2,7 +2,7 @@
 
 Serves a dual-panel web interface:
   - Left: Fully interactive, smooth, scrollable terminal (ttyd + Claude Code CLI)
-  - Right: Drag-and-drop file upload zone with automatic HydraDB snapshot compilation
+  - Right: Drag-and-drop file upload zone + live file & snapshot inspector
 """
 
 from __future__ import annotations
@@ -116,28 +116,32 @@ HTML_PAGE = """<!DOCTYPE html>
       display: block;
     }
     .sidebar-pane {
-      width: 360px;
+      width: 380px;
       background: var(--bg-panel);
       height: 100%;
       display: flex;
       flex-direction: column;
       overflow-y: auto;
-      padding: 20px;
-      gap: 20px;
+      padding: 18px;
+      gap: 18px;
     }
     .sidebar-pane::-webkit-scrollbar { width: 6px; }
     .sidebar-pane::-webkit-scrollbar-thumb { background: #232838; border-radius: 3px; }
     .panel-title {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.8px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .dropzone {
       border: 2px dashed var(--border);
-      border-radius: 12px;
-      padding: 24px 16px;
+      border-radius: 10px;
+      padding: 20px 14px;
       text-align: center;
       background: var(--bg-card);
       cursor: pointer;
@@ -148,23 +152,23 @@ HTML_PAGE = """<!DOCTYPE html>
       background: #1c1a20;
     }
     .drop-icon {
-      font-size: 32px;
-      margin-bottom: 8px;
+      font-size: 28px;
+      margin-bottom: 6px;
     }
     .drop-text {
       font-weight: 600;
-      font-size: 14px;
-      margin-bottom: 4px;
+      font-size: 13px;
+      margin-bottom: 2px;
     }
     .drop-hint {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--text-muted);
     }
     .notification {
       display: none;
-      padding: 10px 14px;
+      padding: 10px 12px;
       border-radius: 8px;
-      font-size: 13px;
+      font-size: 12px;
       font-family: 'JetBrains Mono', monospace;
       animation: fadeIn 0.3s ease;
     }
@@ -183,13 +187,13 @@ HTML_PAGE = """<!DOCTYPE html>
     .datasets-list {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
     .dataset-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 12px;
+      padding: 10px 12px;
       transition: border-color 0.2s ease;
     }
     .dataset-card:hover {
@@ -199,24 +203,28 @@ HTML_PAGE = """<!DOCTYPE html>
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
     .dataset-name {
       font-weight: 600;
-      font-size: 13px;
+      font-size: 12.5px;
       color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      word-break: break-all;
     }
     .dataset-pill {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--green);
       background: #0d251a;
       border: 1px solid #14532d;
       padding: 2px 6px;
-      border-radius: 6px;
+      border-radius: 4px;
       font-family: 'JetBrains Mono', monospace;
+      flex-shrink: 0;
+      margin-left: 6px;
     }
     .dataset-stats {
-      font-size: 12px;
+      font-size: 11.5px;
       color: var(--text-muted);
       font-family: 'JetBrains Mono', monospace;
     }
@@ -226,11 +234,11 @@ HTML_PAGE = """<!DOCTYPE html>
       background: #12141c;
       border: 1px solid #1d212d;
       color: var(--peach);
-      font-size: 12px;
-      padding: 8px 10px;
+      font-size: 11px;
+      padding: 6px 8px;
       border-radius: 6px;
       cursor: pointer;
-      margin-top: 8px;
+      margin-top: 6px;
       font-family: 'JetBrains Mono', monospace;
       transition: all 0.2s;
     }
@@ -247,10 +255,10 @@ HTML_PAGE = """<!DOCTYPE html>
     <div class="logo-badge">
       <div class="dot"></div>
       <span>CONTEXT FLOW</span>
-      <span style="color: var(--text-muted); font-weight: 400; font-size: 13px;">| Graph-RAG Platform</span>
+      <span style="color: var(--text-muted); font-weight: 400; font-size: 13px;">| Graph-RAG Terminal</span>
     </div>
     <div class="status-badge">
-      <span>● LOCAL GRAPH ENGINE</span>
+      <span>● ZERO-INFRA LOCAL ENGINE</span>
     </div>
   </header>
 
@@ -261,9 +269,11 @@ HTML_PAGE = """<!DOCTYPE html>
 
     <div class="sidebar-pane">
       <div>
-        <div class="panel-title" style="margin-bottom: 10px;">Drag & Drop Data Ingestion</div>
+        <div class="panel-title">
+          <span>Drop New Document</span>
+        </div>
         <div class="dropzone" id="dropzone">
-          <div class="drop-icon">📄</div>
+          <div class="drop-icon">📂</div>
           <div class="drop-text">Drop PDF, TXT, MD, or JSON</div>
           <div class="drop-hint">Auto-builds HydraDB Snapshot</div>
           <input type="file" id="file-input" style="display:none" accept=".pdf,.txt,.md,.json" />
@@ -273,40 +283,22 @@ HTML_PAGE = """<!DOCTYPE html>
       <div id="status-box" class="notification"></div>
 
       <div>
-        <div class="panel-title" style="margin-bottom: 10px;">Pre-Loaded Graph Datasets</div>
-        <div class="datasets-list" id="datasets-container">
-          <div class="dataset-card">
-            <div class="dataset-header">
-              <span class="dataset-name">system_architecture.md</span>
-              <span class="dataset-pill">Ready</span>
-            </div>
-            <div class="dataset-stats">3 vertices · 2 edges · Local Snapshot</div>
-            <button class="sample-btn" onclick="copyQuery('Which change caused INC-1042 and who owns it?')">
-              ➔ "Which change caused INC-1042?"
-            </button>
-          </div>
+        <div class="panel-title">
+          <span>Active Files (data/files)</span>
+          <span id="files-count" style="font-weight: 400; font-size: 11px;">0 files</span>
+        </div>
+        <div class="datasets-list" id="files-container">
+          <div class="dataset-stats" style="padding: 8px;">Loading files...</div>
+        </div>
+      </div>
 
-          <div class="dataset-card">
-            <div class="dataset-header">
-              <span class="dataset-name">ArtOfWar.snapshot.json</span>
-              <span class="dataset-pill">Ready</span>
-            </div>
-            <div class="dataset-stats">656 vertices · 1,191 edges</div>
-            <button class="sample-btn" onclick="copyQuery('What are the five constant factors in the art of war?')">
-              ➔ "What are the five constant factors?"
-            </button>
-          </div>
-
-          <div class="dataset-card">
-            <div class="dataset-header">
-              <span class="dataset-name">incidents.snapshot.json</span>
-              <span class="dataset-pill">Ready</span>
-            </div>
-            <div class="dataset-stats">9 vertices · 8 edges</div>
-            <button class="sample-btn" onclick="copyQuery('/compare What are the five constant factors in the art of war?')">
-              ➔ Run /compare token benchmark
-            </button>
-          </div>
+      <div>
+        <div class="panel-title">
+          <span>Compiled Graph Snapshots</span>
+          <span id="snapshots-count" style="font-weight: 400; font-size: 11px;">0 snapshots</span>
+        </div>
+        <div class="datasets-list" id="snapshots-container">
+          <div class="dataset-stats" style="padding: 8px;">Loading snapshots...</div>
         </div>
       </div>
     </div>
@@ -352,7 +344,7 @@ HTML_PAGE = """<!DOCTYPE html>
         const data = await res.json();
         if (data.success) {
           statusBox.className = 'notification success';
-          statusBox.innerHTML = `✔ <b>${data.filename}</b> snapshot compiled!<br>${data.vertices} vertices · ${data.edges} edges.<br><i>Ready to query in the terminal.</i>`;
+          statusBox.innerHTML = `✔ <b>${data.filename}</b> compiled!<br>${data.vertices} vertices · ${data.edges} edges.<br><i>Ready to query in the left terminal!</i>`;
           loadDatasets();
         } else {
           statusBox.className = 'notification';
@@ -374,7 +366,7 @@ HTML_PAGE = """<!DOCTYPE html>
       navigator.clipboard.writeText(q);
       const prev = statusBox.style.display;
       statusBox.className = 'notification success';
-      statusBox.innerHTML = `Copied to clipboard: <i>"${q}"</i><br>Paste it directly into the terminal!`;
+      statusBox.innerHTML = `Copied to clipboard:<br><i>"${q}"</i><br>Paste it directly into the terminal!`;
       setTimeout(() => { statusBox.style.display = prev; }, 3500);
     }
 
@@ -382,20 +374,54 @@ HTML_PAGE = """<!DOCTYPE html>
       try {
         const res = await fetch('/api/snapshots');
         const data = await res.json();
-        if (data.snapshots && data.snapshots.length > 0) {
-          const container = document.getElementById('datasets-container');
-          container.innerHTML = data.snapshots.map(s => `
+
+        // 1. Render files in data/files
+        if (data.files) {
+          const filesContainer = document.getElementById('files-container');
+          document.getElementById('files-count').innerText = `${data.files.length} file(s)`;
+          filesContainer.innerHTML = data.files.map(f => `
             <div class="dataset-card">
               <div class="dataset-header">
-                <span class="dataset-name">${s.name}</span>
-                <span class="dataset-pill">Active</span>
+                <span class="dataset-name">📄 ${f.name}</span>
+                <span class="dataset-pill">${f.has_snapshot ? 'Snapshot Ready' : 'Pending'}</span>
               </div>
-              <div class="dataset-stats">${s.vertices} vertices · ${s.edges} edges</div>
+              <div class="dataset-stats">${f.size_kb} KB · ${f.snapshot_name || 'No snapshot'}</div>
             </div>
           `).join('');
         }
+
+        // 2. Render snapshots in snapshots/
+        if (data.snapshots) {
+          const snapsContainer = document.getElementById('snapshots-container');
+          document.getElementById('snapshots-count').innerText = `${data.snapshots.length} snapshot(s)`;
+          snapsContainer.innerHTML = data.snapshots.map(s => {
+            let sampleBtn = '';
+            if (s.name.includes('incidents')) {
+              sampleBtn = `<button class="sample-btn" onclick="copyQuery('Which change caused INC-1042 and who owns it?')">➔ "Which change caused INC-1042?"</button>`;
+            } else if (s.name.includes('ArtOfWar')) {
+              sampleBtn = `<button class="sample-btn" onclick="copyQuery('What are the five constant factors in the art of war?')">➔ "What are the 5 constant factors?"</button>`;
+            } else if (s.name.includes('architecture')) {
+              sampleBtn = `<button class="sample-btn" onclick="copyQuery('Which team maintains the checkout-api service?')">➔ "Who maintains checkout-api?"</button>`;
+            }
+            return `
+              <div class="dataset-card">
+                <div class="dataset-header">
+                  <span class="dataset-name">◆ ${s.name}</span>
+                  <span class="dataset-pill">Active</span>
+                </div>
+                <div class="dataset-stats">${s.vertices} vertices · ${s.edges} edges (${s.size_kb} KB)</div>
+                ${sampleBtn}
+              </div>
+            `;
+          }).join('');
+        }
       } catch (e) {}
     }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadDatasets();
+      setInterval(loadDatasets, 4000);
+    });
   </script>
 </body>
 </html>
@@ -452,18 +478,43 @@ async def upload_handler(request: web.Request) -> web.Response:
 
 
 async def snapshots_handler(request: web.Request) -> web.Response:
-    """Return list of generated snapshots and stats."""
-    snaps = []
+    """Return list of files in data/files/ and snapshots in snapshots/."""
+    files_list = []
+    for f in sorted(DATA_FILES_DIR.iterdir()):
+        if f.is_file() and not f.name.startswith("."):
+            snap_path = SNAPSHOTS_DIR / f"{f.stem}.snapshot.json"
+            files_list.append({
+                "name": f.name,
+                "size_kb": round(f.stat().st_size / 1024, 1),
+                "has_snapshot": snap_path.exists(),
+                "snapshot_name": snap_path.name if snap_path.exists() else None,
+            })
+
+    snaps_list = []
     for s in sorted(SNAPSHOTS_DIR.glob("*.snapshot.json")):
         try:
             d = json.loads(s.read_text(encoding="utf-8"))
             counts = d.get("counts", {})
             v = counts.get("vertices", len(d.get("vertices", [])))
             e = counts.get("edges", len(d.get("edges", [])))
-            snaps.append({"name": s.name, "vertices": v, "edges": e})
+            snaps_list.append({
+                "name": s.name,
+                "vertices": v,
+                "edges": e,
+                "size_kb": round(s.stat().st_size / 1024, 1),
+            })
         except Exception:
-            snaps.append({"name": s.name, "vertices": "manifest", "edges": ""})
-    return web.json_response({"snapshots": snaps})
+            snaps_list.append({
+                "name": s.name,
+                "vertices": "active",
+                "edges": "",
+                "size_kb": round(s.stat().st_size / 1024, 1),
+            })
+
+    return web.json_response({
+        "files": files_list,
+        "snapshots": snaps_list
+    })
 
 
 async def ttyd_proxy_handler(request: web.Request) -> web.StreamResponse:
