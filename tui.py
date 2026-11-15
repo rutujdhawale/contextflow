@@ -266,7 +266,7 @@ def print_commands() -> None:
                 ("/ask <question>", "Retrieve grounded structural evidence & synthesize an answer"),
                 ("<question>", "Any text without '/' automatically executes /ask"),
                 ("/compare <question>", "Compare Naive RAG vs PathContext Graph token reduction"),
-                ("/query <openCypher>", "Execute raw openCypher query directly against HydraDB"),
+                # ("/query <openCypher>", "Execute raw openCypher query directly against HydraDB"),
             ],
         ),
         (
@@ -274,11 +274,11 @@ def print_commands() -> None:
             [
                 ("/files", "Inspect files in data/files & snapshot readiness"),
                 ("/fetch <url>", "Download document/PDF from URL and build snapshot"),
-                ("/paste <file>", "Paste text into data/files/ and build snapshot"),
+                # ("/paste <file>", "Paste text into data/files/ and build snapshot"),
                 ("/snapshot <file>", "Build offline HydraDB snapshot manifest for a file"),
                 ("/snapshot all", "Batch-build snapshot manifests for all files in data/files"),
-                ("/load <name>", "Switch active dataset (e.g. /load ArtOfWar or /load incidents)"),
-                ("/ingest <file>", "Ingest a document from data/files into live HydraDB graph"),
+                # ("/load <name>", "Switch active dataset (e.g. /load ArtOfWar or /load incidents)"),
+                # ("/ingest <file>", "Ingest a document from data/files into live HydraDB graph"),
             ],
         ),
         (
@@ -286,7 +286,7 @@ def print_commands() -> None:
             [
                 ("/mode <live|local>", "Toggle between live HydraDB backend and local snapshot"),
                 ("/status", "Display connection ping, graph telemetry, and epoch bookmarks"),
-                ("/clear", "Clear terminal screen and repaint Claude banner"),
+                ("/clear", "Clear terminal screen and repaint banner"),
                 ("/help", "Show quick reference card"),
                 ("/quit, /exit", "Exit the console"),
             ],
@@ -389,7 +389,7 @@ def list_files_and_snapshots() -> None:
     snapshots = sorted([s for s in SNAPSHOTS_DIR.iterdir() if s.is_file() and s.name.endswith(".snapshot.json")])
 
     w, margin = get_layout()
-    print(f"\n{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}LOCAL FILES (data/files){RESET} {BORDER}{'─' * (w - 28)}╮{RESET}")
+    print(f"\n{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}FILES (data/files){RESET} {BORDER}{'─' * (w - 28)}╮{RESET}")
     if not data_files:
         print(f"{margin}{BORDER}│{RESET}  {GRAY}No files found in data/files/. Add PDFs, text, or CSVs here.{RESET}")
     else:
@@ -562,49 +562,15 @@ def run_cli_loop() -> int:
     print_banner()
     print_suggestions_card()
 
-    ROTATING_SUGGESTIONS = [
-        "What are the five constant factors in the art of war?",
-        "Which change caused INC-1042 and who owns it?",
-        "What is a relational schema and candidate key?",
-        "/compare What are the five constant factors in the art of war?",
-        "/files (inspect active datasets)",
-        "/fetch <url> (download external PDF or doc into graph)",
-        "/paste (paste raw incident text)",
-        "What is the doctrine of deception in strategy?",
-    ]
-
-    s_idx = 0
     prompt_symbol = f"{ORANGE_BOLD}> {RESET}"
 
     while True:
         w, margin = get_layout()
-        curr_hint = ROTATING_SUGGESTIONS[s_idx % len(ROTATING_SUGGESTIONS)]
-
-        if sys.stdin.isatty():
-            # Display rotating suggestion indicator above prompt
-            sys.stdout.write(f"\r\033[K{margin}{GRAY}💡 Try:{RESET} {PEACH}\"{curr_hint}\"{RESET}  {GRAY}(enter 1-4 or ask anything){RESET}\n{margin}{prompt_symbol}")
-            sys.stdout.flush()
-
-            import select
-            r, _, _ = select.select([sys.stdin], [], [], 3.2)
-            if not r:
-                # Rotate suggestion smoothly
-                sys.stdout.write("\033[A\r\033[K")
-                sys.stdout.flush()
-                s_idx += 1
-                continue
-            else:
-                try:
-                    line = input().strip()
-                except (EOFError, KeyboardInterrupt):
-                    print(f"\n{margin}{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
-                    return 0
-        else:
-            try:
-                line = input(f"{margin}{prompt_symbol}").strip()
-            except (EOFError, KeyboardInterrupt):
-                print(f"\n{margin}{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
-                return 0
+        try:
+            line = input(f"{margin}{prompt_symbol}").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{margin}{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
+            return 0
 
         if not line:
             continue

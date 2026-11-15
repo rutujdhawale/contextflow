@@ -14,13 +14,13 @@ __pycache__/
 *.log
 ingest.log
 
-# Large local files in data directory
-data/files/*
+# Large local files in data directory (preserve sample test document)
+data/files/*.pdf
 !data/files/.gitkeep
+!data/files/system_architecture.md
 
-# Large generated book snapshots (preserve core demo fixtures)
-snapshots/*
-!snapshots/incidents.snapshot.json
+# Snapshots: exclude massive 8MB DB text, preserve instant test snapshots
+snapshots/FundamentalsofDatabaseSystems.snapshot.json
 
 # OS and editor files
 .DS_Store

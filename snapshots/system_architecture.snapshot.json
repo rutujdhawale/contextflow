@@ -1,0 +1,59 @@
+{
+  "format": "pathcontext-hydradb-snapshot-v1",
+  "source_file": "/home/rutuj21/hydradb-hackathon/ContextFlow/data/files/system_architecture.md",
+  "filename": "system_architecture.md",
+  "modality": "md",
+  "identity": "stable integer id; external_id preserves source identity",
+  "vertices": [
+    {
+      "id": 1082384605,
+      "label": "Document",
+      "external_id": "system_architecture.md",
+      "properties": {
+        "source_file": "/home/rutuj21/hydradb-hackathon/ContextFlow/data/files/system_architecture.md",
+        "modality": "md",
+        "artifact_count": 2
+      }
+    },
+    {
+      "id": 159602982,
+      "label": "Artifact",
+      "external_id": "system_architecture.md:chunk:1",
+      "properties": {
+        "kind": "text",
+        "locator": "chunk:1",
+        "summary": "# Distributed System Architecture & Incident Runbook ## Overview This document specifies the core services, dependency topologies, and operational failure mitigations for the ContextFlow platform. ## Service Dependencies - **API Gateway (Edge Router)**: Directs external client HTTPS requests to internal microservices. Routes all commerce traffic to `checkout-api`. - **Checkout API (`checkout-api`)**: Orchestrates customer orders, cart verification, and payment processing. - Dependencies: Calls `auth-service` for bearer token validation and `payment-client` to dispatch charges to Stripe/Adyen. - Ownership: Maintained by the **Payments-Platform** engineering team (Lead: `@alex-payments`). - **Inventory Service**: Manages stock counts with optimistic concurrency locking and PostgreSQL persistence. ## Known Incident History & Causal Paths ### Incident INC-1042: Checkout API Latency Spike (Sev-1) - **Root Cause**: Deployment `deploy-8842` introduced commit `commit-771` in `payment-client.py`, which caused a connection leak during Stripe webhook retries. - **Affected Endpoints**: `/v1/checkout/charge` and `/v1/orders/confirm`. - **Mitigation Procedure**: 1. Trigger immediate rollback to",
+        "content": "# Distributed System Architecture & Incident Runbook ## Overview This document specifies the core services, dependency topologies, and operational failure mitigations for the ContextFlow platform. ## Service Dependencies - **API Gateway (Edge Router)**: Directs external client HTTPS requests to internal microservices. Routes all commerce traffic to `checkout-api`. - **Checkout API (`checkout-api`)**: Orchestrates customer orders, cart verification, and payment processing. - Dependencies: Calls `auth-service` for bearer token validation and `payment-client` to dispatch charges to Stripe/Adyen. - Ownership: Maintained by the **Payments-Platform** engineering team (Lead: `@alex-payments`). - **Inventory Service**: Manages stock counts with optimistic concurrency locking and PostgreSQL persistence. ## Known Incident History & Causal Paths ### Incident INC-1042: Checkout API Latency Spike (Sev-1) - **Root Cause**: Deployment `deploy-8842` introduced commit `commit-771` in `payment-client.py`, which caused a connection leak during Stripe webhook retries. - **Affected Endpoints**: `/v1/checkout/charge` and `/v1/orders/confirm`. - **Mitigation Procedure**: 1. Trigger immediate rollback to",
+        "raw_bytes": 1807
+      }
+    },
+    {
+      "id": 1234414997,
+      "label": "Artifact",
+      "external_id": "system_architecture.md:chunk:2",
+      "properties": {
+        "kind": "text",
+        "locator": "chunk:2",
+        "summary": "previous stable deployment `deploy-8841`. 2. Follow the operational runbook at `runbook-checkout`: run `kubectl rollout undo deployment/checkout-api`. 3. Precedent: Similar incident `INC-991` was mitigated in under 4 minutes using mitigation playbook `mit-77`. ## Database Schema & Integrity Constraints - The transactional store relies on relation schemas with strict primary key constraints. - Foreign keys between `Orders` and `Customers` are enforced at the database engine tier to prevent orphaned records. - Eventual consistency is maintained via Kafka change-data-capture (CDC) topics.",
+        "content": "previous stable deployment `deploy-8841`. 2. Follow the operational runbook at `runbook-checkout`: run `kubectl rollout undo deployment/checkout-api`. 3. Precedent: Similar incident `INC-991` was mitigated in under 4 minutes using mitigation playbook `mit-77`. ## Database Schema & Integrity Constraints - The transactional store relies on relation schemas with strict primary key constraints. - Foreign keys between `Orders` and `Customers` are enforced at the database engine tier to prevent orphaned records. - Eventual consistency is maintained via Kafka change-data-capture (CDC) topics.",
+        "raw_bytes": 1807
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": 1082384605,
+      "target": 159602982,
+      "type": "HAS_ARTIFACT"
+    },
+    {
+      "source": 1082384605,
+      "target": 1234414997,
+      "type": "HAS_ARTIFACT"
+    }
+  ],
+  "counts": {
+    "vertices": 3,
+    "edges": 2
+  }
+}
