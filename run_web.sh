@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ContextFlow Web Runner
-# Serves ContextFlow over web terminal with dark obsidian styling (#0b0c10) and HydraDB orange accents.
+# Serves ContextFlow over web terminal with dark obsidian styling (#0d0e12) and HydraDB orange accents.
 
 set -e
 
@@ -44,7 +44,7 @@ echo "=========================================================="
 echo " Starting ContextFlow Web Terminal"
 echo " Target : $APP_DIR/$TARGET_SCRIPT"
 echo " Port   : ${PORT}"
-echo " Theme  : Obsidian Dark (#0b0c10) + HydraDB Orange (#FF5719)"
+echo " Theme  : Obsidian Dark (#0d0e12) + HydraDB Orange (#FF5719)"
 echo "=========================================================="
 
 exec ttyd \
@@ -52,7 +52,10 @@ exec ttyd \
   -i 0.0.0.0 \
   -W \
   -w "$APP_DIR" \
-  -t fontSize=15 \
-  -t fontFamily="'Fira Code', 'JetBrains Mono', 'DejaVu Sans Mono', monospace" \
-  -t "theme={\"background\": \"#0b0c10\", \"foreground\": \"#eceff4\", \"cursor\": \"#FF5719\", \"selectionBackground\": \"#ff571933\"}" \
+  -t fontSize=14 \
+  -t fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" \
+  -t letterSpacing=0 \
+  -t lineHeight=1.2 \
+  -t cursorBlink=true \
+  -t "theme={\"background\": \"#0d0e12\", \"foreground\": \"#eceff4\", \"cursor\": \"#FF5719\", \"selectionBackground\": \"#ff571933\"}" \
   "$PYTHON_BIN" "$APP_DIR/$TARGET_SCRIPT"

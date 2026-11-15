@@ -494,6 +494,7 @@ def run_cli_loop() -> int:
 
     print("\033[2J\033[H", end="")
     print_banner()
+    print(f"  {GRAY}Ask any question, or type {PEACH}/commands{GRAY} to browse datasets & tools.{RESET}\n")
 
     prompt_symbol = f"{ORANGE_BOLD}> {RESET}"
 
@@ -867,15 +868,16 @@ def main() -> int:
             print(f"Cloud container detected without TTY. Starting ContextFlow Web Terminal on port {port}...")
             os.execv(str(web_runner), [str(web_runner)])
 
-    if "--cli" in sys.argv or not sys.stdin.isatty():
-        return run_cli_loop()
-    try:
-        from tui_textual import ContextFlowApp
-        app = ContextFlowApp()
-        app.run()
-        return 0
-    except Exception:
-        return run_cli_loop()
+    if "--textual" in sys.argv or "--gui" in sys.argv:
+        try:
+            from tui_textual import ContextFlowApp
+            app = ContextFlowApp()
+            app.run()
+            return 0
+        except Exception:
+            return run_cli_loop()
+
+    return run_cli_loop()
 
 
 if __name__ == "__main__":

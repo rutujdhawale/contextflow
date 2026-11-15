@@ -163,19 +163,19 @@ class ContextFlowApp(App):
 
     CSS = """
     Screen {
-        background: #0b0c10;
-        color: #e5e9f0;
+        background: #0d0e12;
+        color: #e2e8f0;
     }
 
     #app_header {
-        height: 4;
-        background: #12151f;
-        border-bottom: solid #ff5719;
+        height: 3;
+        background: #12141a;
+        border-bottom: solid #1f232d;
         padding: 0 2;
     }
 
     #app_title {
-        color: #ff5719;
+        color: #ffffff;
         text-style: bold;
         padding-top: 1;
     }
@@ -194,95 +194,81 @@ class ContextFlowApp(App):
         width: 3fr;
         height: 100%;
         padding: 1 2;
-        background: #0f121a;
-        border-right: solid #1f2533;
+        background: #0d0e12;
+        border-right: solid #191c24;
     }
 
     #sidebar {
-        width: 1fr;
+        width: 34;
         height: 100%;
-        background: #141824;
+        background: #111318;
         padding: 1;
     }
 
     .sidebar_header {
-        color: #ff9d5c;
+        color: #717c96;
         text-style: bold;
-        border-bottom: solid #2a3449;
+        margin-top: 1;
         margin-bottom: 1;
-        padding-bottom: 1;
     }
 
     .sidebar_button {
         width: 100%;
         margin-bottom: 1;
-        background: #1e2436;
-        color: #d8dee9;
-        border: none;
+        background: #161820;
+        color: #abb2bf;
+        border: round #222632;
+        height: 3;
     }
 
     .sidebar_button:hover {
-        background: #ff5719;
-        color: #ffffff;
-        text-style: bold;
+        background: #1f2330;
+        color: #ff5719;
+        border: round #ff5719;
     }
 
     #telemetry_box {
-        background: #0c0e14;
-        border: round #273044;
+        background: #14161f;
+        border: round #222632;
         padding: 1;
-        margin-top: 1;
         color: #8892b0;
     }
 
     #input_container {
-        height: 4;
-        background: #12151f;
-        border-top: solid #1f2533;
+        height: 3;
+        background: #12141a;
+        border-top: solid #1f232d;
         padding: 0 1;
     }
 
     #query_input {
-        width: 5fr;
-        background: #1c2130;
+        width: 1fr;
+        background: #151821;
         color: #ffffff;
-        border: solid #2f3b52;
+        border: round #252b39;
     }
 
     #query_input:focus {
-        border: solid #ff5719;
-    }
-
-    #send_btn {
-        width: 1fr;
-        background: #ff5719;
-        color: #ffffff;
-        text-style: bold;
-        border: none;
-        margin-left: 1;
-    }
-
-    #send_btn:hover {
-        background: #ff773d;
+        border: round #ff5719;
     }
 
     .user_msg_card {
-        background: #1e2436;
+        background: #161922;
         border-left: thick #ff5719;
         padding: 1;
         margin-bottom: 1;
     }
 
     .assistant_msg_card {
-        background: #151a26;
-        border: round #263147;
+        background: #13151b;
+        border: round #202430;
         padding: 1 2;
         margin-bottom: 2;
     }
 
     .evidence_box {
-        background: #0f131c;
-        border: round #ff9d5c;
+        background: #101218;
+        border: round #2c3344;
         padding: 1;
         margin-bottom: 1;
         color: #a0aec0;
@@ -335,8 +321,8 @@ class ContextFlowApp(App):
     def compose(self) -> ComposeResult:
         # Header bar
         yield Horizontal(
-            Static("✦ CONTEXT FLOW  |  Graph-RAG Engine", id="app_title"),
-            Static(f"● {self.mode.upper()}  |  {self.active_dataset}", id="status_pill"),
+            Static("● CONTEXT FLOW  │  Graph-RAG Engine", id="app_title"),
+            Static(f"{self.mode.upper()}  │  {self.active_dataset}", id="status_pill"),
             id="app_header",
         )
 
@@ -345,27 +331,26 @@ class ContextFlowApp(App):
             with VerticalScroll(id="chat_scroll"):
                 yield Markdown(
                     """### Welcome to ContextFlow
-Ask any question against your graph snapshots (*The Art of War*, *Database Systems*, *Incidents*), or use the commands sidebar.
+Ask any question against your graph snapshots (*The Art of War*, *Database Systems*, *Incidents*), or use the quick actions sidebar.
 """,
                     classes="assistant_msg_card",
                 )
 
             with Vertical(id="sidebar"):
                 yield Static("QUICK ACTIONS", classes="sidebar_header")
-                yield Button("📋 /commands", id="btn_commands", classes="sidebar_button")
-                yield Button("📁 /files", id="btn_files", classes="sidebar_button")
-                yield Button("📸 /snapshot all", id="btn_snapshot", classes="sidebar_button")
-                yield Button("⚖ /compare", id="btn_compare", classes="sidebar_button")
-                yield Button("🔄 Toggle Mode", id="btn_mode", classes="sidebar_button")
-                yield Button("🧹 /clear", id="btn_clear", classes="sidebar_button")
+                yield Button("/commands", id="btn_commands", classes="sidebar_button")
+                yield Button("/files", id="btn_files", classes="sidebar_button")
+                yield Button("/snapshot all", id="btn_snapshot", classes="sidebar_button")
+                yield Button("/compare", id="btn_compare", classes="sidebar_button")
+                yield Button("Toggle Mode", id="btn_mode", classes="sidebar_button")
+                yield Button("/clear", id="btn_clear", classes="sidebar_button")
 
                 yield Static("GRAPH TELEMETRY", classes="sidebar_header")
                 yield Static(self._telemetry_text(), id="telemetry_box")
 
         # Bottom Input
         with Horizontal(id="input_container"):
-            yield Input(placeholder="Ask a question or type /help...", id="query_input")
-            yield Button("Query", id="send_btn")
+            yield Input(placeholder="Ask a question or type /help... (press Enter to submit)", id="query_input")
 
         yield Footer()
 
