@@ -20,6 +20,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+ROOT_DIR = Path(__file__).parent.resolve()
+os.chdir(ROOT_DIR)
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive

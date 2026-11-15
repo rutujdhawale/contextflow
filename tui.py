@@ -20,6 +20,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+ROOT_DIR = Path(__file__).parent.resolve()
+os.chdir(ROOT_DIR)
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from ingest import ingest_fixture, load_fixture
 from pathcontext.answer import render_answer
 from pathcontext.context_compiler import ContextCompiler
