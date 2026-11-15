@@ -1,6 +1,6 @@
-"""HydraDB / ContextFlow Terminal UI (TUI).
+"""ContextFlow Terminal UI (TUI).
 
-An aesthetic, Claude Code-inspired developer console for HydraDB structural context.
+An , Claude Code-inspired developer console for HydraDB structural context.
 Features:
   - Exact HydraDB Orange (#FF5719) & Claude Code slant block typography
   - Categorized slash commands directory (/commands) with tab auto-completion
@@ -158,39 +158,29 @@ def _client() -> HydraDBClient:
 # ─────────────────────────────────────────────────────────────────────────────
 # Aesthetic Header & Claude Code Typography
 # ─────────────────────────────────────────────────────────────────────────────
-def print_banner(mode: str, active_dataset: str, dataset_counts: str) -> None:
-    """Print the aesthetic ContextFlow banner in Claude Code slant font."""
+def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str = "") -> None:
+    """Print the aesthetic CONTEXT FLOW gradient banner."""
     banner_lines = [
-        r"   ______            __            __  ________ __               ",
-        r"  / ____/___  ____  / /____  _  __/ /_/ ____/ // /___ _      __  ",
-        r" / /   / __ \/ __ \/ __/ _ \| |/_/ __/ /_  / // // __ \ | /| / /  ",
-        r"/ /___/ /_/ / / / / /_/  __/>  </ /_/ __/ / // // /_/ / |/ |/ /   ",
-        r"\____/\____/_/ /_/\__/\___/_/|_|\__/_/   /_//_/ \____/|__/|__/    ",
+        r"   ______ ____  _   __ ______ _______ _  __ ______    ______ __     ____ _       __ ",
+        r"  / ____// __ \/ | / //_  __// ____/ | |/ //_  __/   / ____// /    / __ \ |     / / ",
+        r" / /    / / / /  |/ /  / /  / __/    |   /  / /     / /_   / /    / / / / | /| / /  ",
+        r"/ /___ / /_/ // /|  /  / /  / /___  /   |  / /     / __/  / /___ / /_/ /| |/ |/ /   ",
+        r"\____/ \____//_/ |_/  /_/  /_____/ /_/|_| /_/     /_/    /_____/ \____/ |__/|__/    ",
     ]
 
     print()
     for line in banner_lines:
-        print(f"{ORANGE_BOLD}{line}{RESET}")
+        w = len(line)
+        row = []
+        for i, char in enumerate(line):
+            t = i / max(1, w - 1)
+            # Smooth gradient from warm peach-white (255, 220, 170) to vibrant HydraDB orange (255, 75, 15)
+            r = 255
+            g = int(220 * (1 - t) + 75 * t)
+            b = int(170 * (1 - t) + 15 * t)
+            row.append(f"\033[38;2;{r};{g};{b}m\033[1m{char}")
+        print("".join(row) + RESET)
     print()
-
-    # Status Pill Box
-    mode_color = GREEN_BOLD if mode == "live" else AMBER
-    mode_tag = f"{mode_color}● {mode.upper()}{RESET}"
-
-    llm_name = (
-        f"{GREEN}Groq ({os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant')}){RESET}"
-        if os.getenv("GROQ_API_KEY") and not os.getenv("GROQ_API_KEY", "").startswith("replace")
-        else (f"{CYAN}OpenCode{RESET}" if os.getenv("OPENCODE_COMMAND") else f"{GRAY}Deterministic{RESET}")
-    )
-
-    hydra_host = os.getenv("PATHCONTEXT_HYDRADB_URL", "http://127.0.0.1:8443").replace("http://", "").replace("https://", "")
-
-    w = CARD_WIDTH
-    print(f"{BORDER}╭{'─' * (w - 2)}╮{RESET}")
-    print(f"{BORDER}│{RESET}  Engine: {mode_tag} {GRAY}│{RESET} Host: {WHITE}{hydra_host}{RESET} {GRAY}│{RESET} LLM: {llm_name}")
-    print(f"{BORDER}│{RESET}  Dataset: {PEACH}{active_dataset}{RESET} {GRAY}({dataset_counts}){RESET}")
-    print(f"{BORDER}│{RESET}  Shortcuts: {WHITE}/commands{RESET} · {WHITE}/files{RESET} · {WHITE}/snapshot{RESET} · {WHITE}/ask <q>{RESET} · {WHITE}/query <cypher>{RESET} · {WHITE}/help{RESET}")
-    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
 
 def print_commands() -> None:
@@ -287,7 +277,7 @@ def print_evidence_packet(packet: EvidencePacket) -> None:
 
 
 def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any = None) -> None:
-    """Render grounded answer with clean typography and line wrapping."""
+    """Render grounded answer with clean typography, line wrapping, and streaming effect."""
     w = CARD_WIDTH
     provider = answer_obj.provider if answer_obj else "Grounded Graph Evidence"
 
@@ -313,7 +303,13 @@ def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any
             continue
         wrapped = textwrap.wrap(block, width=w - 6)
         for w_line in wrapped:
-            print(f"{BORDER}│{RESET}  {w_line}")
+            sys.stdout.write(f"{BORDER}│{RESET}  ")
+            words = w_line.split(" ")
+            for widx, word in enumerate(words):
+                sys.stdout.write(word + (" " if widx < len(words) - 1 else ""))
+                sys.stdout.flush()
+                time.sleep(0.012)
+            sys.stdout.write("\n")
     print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
 
@@ -479,15 +475,13 @@ def main() -> int:
     local_compiler = ContextCompiler(load_fixture(default_fixture)) if default_fixture.exists() else None
 
     print("\033[2J\033[H", end="")
-    summary = active_session.count_summary() if active_session else "none"
-    print_banner(mode, active_dataset, summary)
+    print_banner()
 
-    prompt_symbol = f"{ORANGE_BOLD}❯{RESET} "
+    prompt_symbol = f"{ORANGE_BOLD}> {RESET}"
 
     while True:
         try:
-            prompt_header = f"{ORANGE_BOLD}contextflow{RESET}{GRAY}[{GREEN if mode == 'live' else AMBER}{mode}{GRAY}:{PEACH}{active_dataset.split('.')[0]}{GRAY}]{RESET} {prompt_symbol}"
-            line = input(prompt_header).strip()
+            line = input(prompt_symbol).strip()
         except (EOFError, KeyboardInterrupt):
             print(f"\n{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
             return 0
@@ -510,8 +504,7 @@ def main() -> int:
 
         if line == "/clear":
             print("\033[2J\033[H", end="")
-            summary = active_session.count_summary() if active_session else "none"
-            print_banner(mode, active_dataset, summary)
+            print_banner()
             continue
 
         if line == "/files":
