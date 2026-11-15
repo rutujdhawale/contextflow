@@ -1,0 +1,28 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment secrets and local logs
+.env
+*.log
+ingest.log
+
+# Large local files in data directory
+data/files/*
+!data/files/.gitkeep
+
+# Large generated book snapshots (preserve core demo fixtures)
+snapshots/*
+!snapshots/incidents.snapshot.json
+
+# OS and editor files
+.DS_Store
+.vscode/
+.idea/

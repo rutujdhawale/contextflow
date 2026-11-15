@@ -1,0 +1,23 @@
+{
+  "entities": [
+    {"id": "INC-1042", "type": "Incident", "properties": {"occurred_at": "2025-03-08T10:00:00+00:00", "category": "latency"}},
+    {"id": "INC-991", "type": "Incident", "properties": {"occurred_at": "2025-02-20T08:00:00+00:00", "category": "latency"}},
+    {"id": "checkout-api", "type": "Service", "properties": {}},
+    {"id": "deploy-8842", "type": "Deployment", "properties": {"deployed_at": "2025-03-08T09:42:00+00:00"}},
+    {"id": "commit-771", "type": "Commit", "properties": {}},
+    {"id": "payment-client.py", "type": "File", "properties": {}},
+    {"id": "Payments-Platform", "type": "Team", "properties": {}},
+    {"id": "mit-77", "type": "Mitigation", "properties": {"outcome": "successful", "summary": "disable retry amplification"}},
+    {"id": "runbook-checkout", "type": "Runbook", "properties": {}}
+  ],
+  "relationships": [
+    {"source_id": "INC-1042", "source_type": "Incident", "type": "AFFECTS", "target_id": "checkout-api", "target_type": "Service"},
+    {"source_id": "INC-991", "source_type": "Incident", "type": "AFFECTS", "target_id": "checkout-api", "target_type": "Service"},
+    {"source_id": "checkout-api", "source_type": "Service", "type": "DEPLOYED_AS", "target_id": "deploy-8842", "target_type": "Deployment"},
+    {"source_id": "deploy-8842", "source_type": "Deployment", "type": "CONTAINS", "target_id": "commit-771", "target_type": "Commit"},
+    {"source_id": "commit-771", "source_type": "Commit", "type": "TOUCHED", "target_id": "payment-client.py", "target_type": "File"},
+    {"source_id": "payment-client.py", "source_type": "File", "type": "OWNED_BY", "target_id": "Payments-Platform", "target_type": "Team"},
+    {"source_id": "INC-991", "source_type": "Incident", "type": "RESOLVED_BY", "target_id": "mit-77", "target_type": "Mitigation"},
+    {"source_id": "checkout-api", "source_type": "Service", "type": "HAS_RUNBOOK", "target_id": "runbook-checkout", "target_type": "Runbook"}
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "format": "pathcontext-hydradb-snapshot-v1",
+  "source_fixture": "/home/rutuj21/hydradb-hackathon/ContextFlow/fixtures/incidents.json",
+  "identity": "stable integer id; external_id preserves source identity",
+  "vertices": [
+    {
+      "id": 1,
+      "label": "Incident",
+      "external_id": "INC-1042",
+      "properties": {
+        "occurred_at": "2025-03-08T10:00:00+00:00",
+        "category": "latency"
+      }
+    },
+    {
+      "id": 2,
+      "label": "Incident",
+      "external_id": "INC-991",
+      "properties": {
+        "occurred_at": "2025-02-20T08:00:00+00:00",
+        "category": "latency"
+      }
+    },
+    {
+      "id": 3,
+      "label": "Service",
+      "external_id": "checkout-api",
+      "properties": {}
+    },
+    {
+      "id": 4,
+      "label": "Deployment",
+      "external_id": "deploy-8842",
+      "properties": {
+        "deployed_at": "2025-03-08T09:42:00+00:00"
+      }
+    },
+    {
+      "id": 5,
+      "label": "Commit",
+      "external_id": "commit-771",
+      "properties": {}
+    },
+    {
+      "id": 6,
+      "label": "File",
+      "external_id": "payment-client.py",
+      "properties": {}
+    },
+    {
+      "id": 7,
+      "label": "Team",
+      "external_id": "Payments-Platform",
+      "properties": {}
+    },
+    {
+      "id": 8,
+      "label": "Mitigation",
+      "external_id": "mit-77",
+      "properties": {
+        "outcome": "successful",
+        "summary": "disable retry amplification"
+      }
+    },
+    {
+      "id": 9,
+      "label": "Runbook",
+      "external_id": "runbook-checkout",
+      "properties": {}
+    }
+  ],
+  "edges": [
+    {
+      "source": 1,
+      "target": 3,
+      "type": "AFFECTS"
+    },
+    {
+      "source": 2,
+      "target": 3,
+      "type": "AFFECTS"
+    },
+    {
+      "source": 3,
+      "target": 4,
+      "type": "DEPLOYED_AS"
+    },
+    {
+      "source": 4,
+      "target": 5,
+      "type": "CONTAINS"
+    },
+    {
+      "source": 5,
+      "target": 6,
+      "type": "TOUCHED"
+    },
+    {
+      "source": 6,
+      "target": 7,
+      "type": "OWNED_BY"
+    },
+    {
+      "source": 2,
+      "target": 8,
+      "type": "RESOLVED_BY"
+    },
+    {
+      "source": 3,
+      "target": 9,
+      "type": "HAS_RUNBOOK"
+    }
+  ],
+  "counts": {
+    "vertices": 9,
+    "edges": 8
+  }
+}

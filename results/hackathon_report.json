@@ -1,0 +1,224 @@
+{
+  "demo": "PathContext",
+  "question": "Which change caused INC-1042, who owns it, and what worked previously?",
+  "offline_evaluation": {
+    "protocol": {
+      "repetitions": 20,
+      "seed": 7,
+      "fixture": "/home/rutuj21/hydradb-hackathon/ContextFlow/fixtures/incidents.json",
+      "same_questions_and_budget": true,
+      "baseline": "top-k lexical entity records with no relationship joins",
+      "graph_test": "same compiler and records through an unindexed plain store"
+    },
+    "systems": {
+      "pathcontext_graph": {
+        "runs": 60,
+        "mean": {
+          "relevant_fact_recall": 1.0,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 20.0,
+          "input_tokens": 50.0,
+          "latency_ms": 0.0615,
+          "edge_scans": 19.0
+        },
+        "p50": {
+          "relevant_fact_recall": 1.0,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 20.0,
+          "input_tokens": 50.0,
+          "latency_ms": 0.05,
+          "edge_scans": 19.0
+        },
+        "p95": {
+          "relevant_fact_recall": 1.0,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 20.0,
+          "input_tokens": 50.0,
+          "latency_ms": 0.13,
+          "edge_scans": 19.0
+        }
+      },
+      "pathcontext_plain_store": {
+        "runs": 60,
+        "mean": {
+          "relevant_fact_recall": 1.0,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 20.0,
+          "input_tokens": 50.0,
+          "latency_ms": 0.0593,
+          "edge_scans": 112.0
+        },
+        "p50": {
+          "relevant_fact_recall": 1.0,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 20.0,
+          "input_tokens": 50.0,
+          "latency_ms": 0.05,
+          "edge_scans": 112.0
+        },
+        "p95": {
+          "relevant_fact_recall": 1.0,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 20.0,
+          "input_tokens": 50.0,
+          "latency_ms": 0.08,
+          "edge_scans": 112.0
+        }
+      },
+      "lexical_baseline": {
+        "runs": 60,
+        "mean": {
+          "relevant_fact_recall": 0.3333,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 83.3333,
+          "input_tokens": 2.6667,
+          "latency_ms": 0.023,
+          "edge_scans": 0.0
+        },
+        "p50": {
+          "relevant_fact_recall": 0.0,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 0.0,
+          "input_tokens": 2.0,
+          "latency_ms": 0.02,
+          "edge_scans": 0.0
+        },
+        "p95": {
+          "relevant_fact_recall": 1.0,
+          "citation_accuracy": 1.0,
+          "unsupported_claim_rate": 0.0,
+          "context_density_per_1000_tokens": 250.0,
+          "input_tokens": 4.0,
+          "latency_ms": 0.03,
+          "edge_scans": 0.0
+        }
+      }
+    },
+    "improvement_over_lexical_baseline": {
+      "relevant_fact_recall_delta": 0.6667,
+      "citation_accuracy_delta": 0.0
+    },
+    "graph_work": {
+      "edge_scan_reduction_vs_plain_store": 0.8304,
+      "interpretation": "Indexed adjacency should reduce scans as the graph grows; quality must remain equal."
+    }
+  },
+  "continual_ingestion": {
+    "protocol": {
+      "rounds": [
+        "before_increment",
+        "after_increment"
+      ],
+      "increment": "new incident, service, deployment, commit, file, and team",
+      "meaning": "This tests continual graph ingestion and deterministic re-indexing; it is not an ML training claim."
+    },
+    "pathcontext": {
+      "before": {
+        "relevant_fact_recall": 0.0,
+        "citation_accuracy": 0.0,
+        "unsupported_claim_rate": 0.0,
+        "context_density_per_1000_tokens": 0.0
+      },
+      "after": {
+        "relevant_fact_recall": 1.0,
+        "citation_accuracy": 1.0,
+        "unsupported_claim_rate": 0.0,
+        "context_density_per_1000_tokens": 32.25806451612903
+      },
+      "after_answerability": "supported"
+    },
+    "lexical_baseline": {
+      "before": {
+        "relevant_fact_recall": 0.0,
+        "citation_accuracy": 0.0,
+        "unsupported_claim_rate": 0.0,
+        "context_density_per_1000_tokens": 0.0
+      },
+      "after": {
+        "relevant_fact_recall": 0.0,
+        "citation_accuracy": 1.0,
+        "unsupported_claim_rate": 0.0,
+        "context_density_per_1000_tokens": 0.0
+      }
+    },
+    "acceptance": {
+      "new_evidence_retrieved": true,
+      "no_pre_ingestion_claim": true
+    }
+  },
+  "live_hydradb": {
+    "status": "passed",
+    "probe_rows": 3,
+    "packet": {
+      "context": "Evidence:\n- incident INC-1042 -> service checkout-api -> deployment deploy-8842 -> commit commit-771 -> file payment-client.py -> team Payments-Platform [source: hydradb:change]\n- incident INC-1042 -> service checkout-api -> previous_incident INC-991 -> mitigation mit-77 [source: hydradb:history]\nUncertainty:\n- Missing required evidence: owner",
+      "facts": [
+        {
+          "text": "incident INC-1042 -> service checkout-api -> deployment deploy-8842 -> commit commit-771 -> file payment-client.py -> team Payments-Platform",
+          "source": "hydradb:change",
+          "path": [
+            "incident:INC-1042",
+            "service:checkout-api",
+            "deployment:deploy-8842",
+            "commit:commit-771",
+            "file:payment-client.py",
+            "team:Payments-Platform"
+          ],
+          "confidence": "supported"
+        },
+        {
+          "text": "incident INC-1042 -> service checkout-api -> previous_incident INC-991 -> mitigation mit-77",
+          "source": "hydradb:history",
+          "path": [
+            "incident:INC-1042",
+            "service:checkout-api",
+            "previous_incident:INC-991",
+            "mitigation:mit-77"
+          ],
+          "confidence": "supported"
+        }
+      ],
+      "contradictions": [],
+      "uncertainty": [
+        "Missing required evidence: owner"
+      ],
+      "answerability": "mixed",
+      "retrieval_stats": {
+        "backend": "hydradb_http",
+        "query_count": 3,
+        "read_epoch": 20,
+        "recipe_count": 2,
+        "input_tokens": 28,
+        "latency_ms": 35.54,
+        "snapshot_consistency": "atomic",
+        "read_epochs": "20"
+      },
+      "required_evidence": [
+        "change",
+        "owner",
+        "history"
+      ],
+      "covered_evidence": [
+        "change",
+        "history"
+      ],
+      "missing_evidence": [
+        "owner"
+      ],
+      "entity_resolution": []
+    },
+    "hydradb": {
+      "backend": "hydradb_http",
+      "query_count": 3,
+      "read_epoch": 20
+    },
+    "source": "prebuilt_hydradb_graph"
+  }
+}

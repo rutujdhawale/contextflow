@@ -1,0 +1,104 @@
+{
+  "overall_status": "p0_code_fixes_implemented_live_write_pending",
+  "final_verdict": "Architecture is sound but implementation is incomplete",
+  "hydradb_boundary_verified": true,
+  "pathcontext_boundary_verified": false,
+  "live_ingestion": {
+    "status": "pending_live_verification",
+    "node_count": null,
+    "relationship_count": null,
+    "read_epoch": 20,
+    "evidence": "Writer now uses explicit-field UNWIND upserts and strict readback; live smoke was blocked by connection refusal from the shell sandbox",
+    "idempotency": "unverified"
+  },
+  "capabilities": [
+    {"name": "Entity resolution", "status": "Implemented", "evidence": "pathcontext/entity_resolution.py reports resolved, ambiguous, and unresolved states"},
+    {"name": "Intent classification", "status": "Partially implemented", "evidence": "hydradb_retriever.py uses keyword recipe selection; no typed intent plan"},
+    {"name": "Evidence requirements", "status": "Implemented", "evidence": "schema.py and evidence_requirements.py expose required, covered, and missing evidence"},
+    {"name": "Traversal recipe selection", "status": "Implemented", "evidence": "pathcontext/traversal_recipes.py and hydradb_retriever.py"},
+    {"name": "HydraDB traversal", "status": "Implemented", "evidence": "live agent returned multi-hop paths with backend hydradb_http and read_epoch 20"},
+    {"name": "Snapshot consistency", "status": "Explicit non-atomic boundary", "evidence": "hydradb_retriever.py compares recipe epochs and marks differing epochs non-atomic"},
+    {"name": "Candidate path scoring", "status": "Implemented", "evidence": "recipe scores and ranked fact selection"},
+    {"name": "Minimum evidence subgraph", "status": "Partially implemented", "evidence": "budgeted fact ranking exists; no requirement-covering path optimizer"},
+    {"name": "Contradiction detection", "status": "Partially implemented", "evidence": "local compiler detects multiple deployments only"},
+    {"name": "Token budgeting", "status": "Implemented", "evidence": "ContextCompiler._select_facts enforces context_budget_tokens"},
+    {"name": "Provenance and citations", "status": "Partially implemented", "evidence": "Fact.source/path exist; no source-id/path validation or read epoch on each claim"},
+    {"name": "Answerability and uncertainty", "status": "Partially implemented", "evidence": "supported/mixed/contradictory/insufficient are emitted locally; live compiler is mostly supported/insufficient"},
+    {"name": "PDF/document graph", "status": "Partially implemented", "evidence": "PDF and multimodal extraction plus graph shapes exist; live writes failed"},
+    {"name": "Baseline comparison", "status": "Implemented", "evidence": "evaluate.py and compare_rag.py define lexical/naive controls and repeated metrics"},
+    {"name": "LLM boundary", "status": "Implemented", "evidence": "llm.py receives EvidencePacket and does not generate Cypher"},
+    {"name": "Failure transparency", "status": "Partially implemented", "evidence": "client errors are explicit; synthesize() suppresses Groq failure before fallback"}
+  ],
+  "redundant_work": [
+    {
+      "file": "pathcontext/graph.py",
+      "function": "GraphStore.outgoing/incoming",
+      "problem": "Python adjacency traversal duplicates graph traversal for offline evaluation",
+      "impact": "Valid for baseline/control, but must not be presented as the live HydraDB path",
+      "minimal_correction": "Label it explicitly as offline reference/control and keep live compiler HydraDB-only"
+    },
+    {
+      "file": "pdf_pipeline.py",
+      "function": "pdf_statements",
+      "problem": "Legacy standalone MERGE statement generator remains alongside the batch writer",
+      "impact": "Future callers can accidentally use mutation forms that fail on the deployed dialect",
+      "minimal_correction": "Remove or mark deprecated and route all document ingestion through write_graph"
+    },
+    {
+      "file": "multimodal_pipeline.py",
+      "function": "statements",
+      "problem": "Legacy standalone mutation generator remains alongside graph_for_artifacts/write_graph",
+      "impact": "Same risk of unsupported writes and divergent behavior",
+      "minimal_correction": "Remove/deprecate and test only the shared writer"
+    }
+  ],
+  "p0_gaps": [
+    {
+      "id": "P0-INGEST",
+      "file": "pathcontext/hydradb_ingest.py",
+      "problem": "Live HydraDB ingestion still needs verification against the active write-capable node",
+      "minimal_fix": "Run a clean DataFusion node and validate the explicit UNWIND parameter dialect with a minimal node, edge, and readback test before fixture ingestion",
+      "acceptance_test": "Two ingestion runs pass; node/edge counts and properties remain stable; failed writes exit non-zero"
+    },
+    {
+      "id": "P0-SNAPSHOT",
+      "file": "pathcontext/hydradb_retriever.py",
+      "problem": "One packet is assembled from multiple independent HTTP snapshots",
+      "minimal_fix": "Use a causal bookmark/read epoch when HydraDB supports it; otherwise explicitly label packets non-atomic",
+      "acceptance_test": "All recipe responses used by one packet share a verified epoch/bookmark"
+    },
+    {
+      "id": "P0-EVIDENCE",
+      "file": "pathcontext/schema.py and context_compiler.py",
+      "problem": "Requirement coverage needed to be represented in packets",
+      "minimal_fix": "Implemented typed requirement IDs, covered/missing IDs, and complete-coverage gating for supported",
+      "acceptance_test": "Removing owner or mitigation evidence yields mixed/insufficient, never supported"
+    },
+    {
+      "id": "P0-ENTITY",
+      "file": "pathcontext/entity_resolution.py",
+      "problem": "Aliases, ambiguity, and unresolved entities needed explicit states",
+      "minimal_fix": "Implemented explicit resolution state records and no random name selection",
+      "acceptance_test": "checkout-api, Payments Platform, and unknown-entity produce explicit resolution states"
+    }
+  ],
+  "p1_gaps": [
+    {"id": "P1-CONTRADICTIONS", "problem": "No structured competing-owner, temporal, rollback, or candidate contradiction model"},
+    {"id": "P1-CITATIONS", "problem": "Claims lack source IDs and read epoch; paths are not validated"},
+    {"id": "P1-LLM-ERRORS", "problem": "Groq errors are swallowed before OpenCode fallback"},
+    {"id": "P1-BOUNDS", "problem": "Live Cypher recipes do not expose explicit max result/hop/runtime controls in the client"},
+    {"id": "P1-DOC-WRITERS", "problem": "Unused legacy statement generators can drift from the supported writer"}
+  ],
+  "tests": [
+    {"name": "VS Code diagnostics", "status": "passed", "evidence": "No errors reported for modified ContextFlow files"},
+    {"name": "Python unit suite", "status": "passed", "evidence": "16 focused tests passed in an isolated interpreter with a PDF import stub; declared pypdf installation was unavailable due network restrictions"},
+    {"name": "HydraDB health", "status": "passed", "evidence": "http://127.0.0.1:8443/healthz returned {\"status\":\"ok\"}"},
+    {"name": "HydraDB live read", "status": "passed", "evidence": "hydradb_agent.py returned cited multi-hop facts and read_epoch 20"},
+    {"name": "HydraDB live ingestion", "status": "blocked", "evidence": "Shell smoke attempt received connection refused while the shared browser health page returned status ok; two-run idempotency remains unverified"}
+  ],
+  "benchmark": {
+    "baseline": "lexical baseline and unindexed plain-record control, not a vector-store comparison",
+    "fairness": "same fixture/questions/budget in evaluate.py; live PDF/LLM comparison not verified",
+    "graph_value": "offline graph-vs-plain-store metrics are implemented; live graph write/read acceptance is incomplete"
+  }
+}

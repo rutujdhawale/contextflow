@@ -1,0 +1,774 @@
+"""HydraDB / ContextFlow Terminal UI (TUI).
+
+An aesthetic, Claude Code-inspired developer console for HydraDB structural context.
+Features:
+  - Exact HydraDB Orange (#FF5719) & Claude Code slant block typography
+  - Categorized slash commands directory (/commands) with tab auto-completion
+  - Offline snapshot generation and exploration for files in data/files
+  - Dual-mode operation (Live HydraDB instance vs Local deterministic snapshot)
+  - Grounded evidence packet cards and LLM synthesis
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import readline
+import sys
+import textwrap
+import time
+from pathlib import Path
+from typing import Any
+
+from ingest import ingest_fixture, load_fixture
+from pathcontext.answer import render_answer
+from pathcontext.context_compiler import ContextCompiler
+from pathcontext.env import load_dotenv
+from pathcontext.graph import GraphStore
+from pathcontext.hydradb_client import HydraDBClient, HydraDBError
+from pathcontext.hydradb_retriever import HydraDBContextCompiler
+from pathcontext.llm import LLMError, synthesize
+from pathcontext.schema import Entity, EvidencePacket, Fact, Relationship
+from prepare_snapshot import build_file_snapshot, build_snapshot
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Claude Code + HydraDB Color Palette (24-bit TrueColor)
+# ─────────────────────────────────────────────────────────────────────────────
+ORANGE = "\033[38;2;255;87;25m"       # Exact HydraDB Logo Orange #FF5719
+ORANGE_BOLD = "\033[1;38;2;255;87;25m"
+PEACH = "\033[38;2;255;165;110m"     # Warm Peach accent
+WHITE = "\033[38;2;245;245;250m"
+WHITE_BOLD = "\033[1;38;2;255;255;255m"
+GRAY = "\033[38;2;135;135;150m"       # Slate / dim annotations
+BORDER = "\033[38;2;75;75;90m"        # Subtle card borders
+GREEN = "\033[38;2;72;220;130m"      # Connected / verified / live
+GREEN_BOLD = "\033[1;38;2;72;220;130m"
+AMBER = "\033[38;2;255;185;60m"      # Warning / uncertainty / local
+CYAN = "\033[38;2;80;200;240m"
+RED = "\033[38;2;255;85;85m"
+RESET = "\033[0m"
+DIM = "\033[2m"
+BOLD = "\033[1m"
+
+ROOT_DIR = Path(__file__).parent
+DATA_FILES_DIR = ROOT_DIR / "data" / "files"
+SNAPSHOTS_DIR = ROOT_DIR / "snapshots"
+FIXTURES_DIR = ROOT_DIR / "fixtures"
+CARD_WIDTH = 80
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Snapshot & Graph Loading
+# ─────────────────────────────────────────────────────────────────────────────
+class LocalSnapshotSession:
+    """Manages loaded snapshot manifest or fixture for offline local queries."""
+
+    def __init__(self, name: str, source_path: Path, data: dict[str, Any], kind: str):
+        self.name = name
+        self.source_path = source_path
+        self.data = data
+        self.kind = kind  # "incident_fixture", "incident_snapshot", "document_snapshot"
+        self.vertices = data.get("vertices", [])
+        self.edges = data.get("edges", [])
+
+    @classmethod
+    def load(cls, path: Path) -> LocalSnapshotSession:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("format") == "pathcontext-hydradb-snapshot-v1":
+            if any(v.get("label") == "Incident" for v in payload.get("vertices", [])):
+                kind = "incident_snapshot"
+            else:
+                kind = "document_snapshot"
+            return cls(path.stem, path, payload, kind)
+        elif "entities" in payload and "relationships" in payload:
+            return cls(path.stem, path, payload, "incident_fixture")
+        raise ValueError(f"Unrecognized snapshot or fixture format in {path}")
+
+    def count_summary(self) -> str:
+        if self.kind == "incident_fixture":
+            return f"{len(self.data.get('entities', []))} entities · {len(self.data.get('relationships', []))} rels"
+        return f"{len(self.vertices)} vertices · {len(self.edges)} edges"
+
+    def retrieve_document(self, question: str, max_facts: int = 4) -> EvidencePacket:
+        """Offline deterministic retrieval over document snapshot vertices."""
+        terms = {t.strip(".,?!:;\"'").lower() for t in question.split() if len(t) > 2}
+        candidates: list[Fact] = []
+        for vertex in self.vertices:
+            props = vertex.get("properties", {})
+            text = props.get("text") or props.get("content") or props.get("summary") or ""
+            if not text:
+                continue
+            haystack = text.lower()
+            score = sum(term in haystack for term in terms)
+            label = vertex.get("label", "Node")
+            ext_id = vertex.get("external_id", str(vertex.get("id")))
+
+            path = (f"{label}:{ext_id}",)
+            if "page_number" in props:
+                doc_name = props.get("source_file", self.name)
+                if "/" in doc_name:
+                    doc_name = Path(doc_name).name
+                path = (f"Document:{doc_name}", f"Page:{props['page_number']}", f"Chunk:{ext_id}")
+            elif "locator" in props:
+                doc_name = props.get("source_file", self.name)
+                if "/" in doc_name:
+                    doc_name = Path(doc_name).name
+                path = (f"Document:{doc_name}", f"Artifact:{props.get('kind', 'item')}", f"Locator:{props['locator']}")
+
+            candidates.append(
+                Fact(
+                    text=text,
+                    source=f"snapshot:{self.name}",
+                    path=path,
+                    confidence="verified" if score > 1 else ("retrieved" if score == 1 else "weak-match"),
+                    score=float(score),
+                    token_cost=max(1, len(text.split())),
+                )
+            )
+
+        ranked = [f for f in sorted(candidates, key=lambda x: x.score, reverse=True) if f.score > 0][:max_facts]
+        supported = bool(ranked and ranked[0].score > 0)
+        uncertainty = [] if supported else ["No direct keyword matches found in local snapshot."]
+        context = "\n".join(f"- {fact.text} [citation: {' -> '.join(fact.path)}]" for fact in ranked)
+
+        return EvidencePacket(
+            context=context,
+            facts=ranked,
+            contradictions=[],
+            uncertainty=uncertainty,
+            answerability="supported" if supported else "insufficient",
+            retrieval_stats={
+                "snapshot_name": self.name,
+                "candidate_chunks": len(candidates),
+                "selected_chunks": len(ranked),
+                "snapshot_consistency": "atomic (offline snapshot)",
+            },
+        )
+
+
+def _client() -> HydraDBClient:
+    return HydraDBClient(
+        base_url=os.getenv("PATHCONTEXT_HYDRADB_URL", "http://127.0.0.1:8443"),
+        graph_id=os.getenv("PATHCONTEXT_GRAPH_ID", "default"),
+        cell_id=os.getenv("PATHCONTEXT_CELL_ID", "cell-0"),
+        token=os.getenv("PATHCONTEXT_HYDRADB_TOKEN"),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Aesthetic Header & Claude Code Typography
+# ─────────────────────────────────────────────────────────────────────────────
+def print_banner(mode: str, active_dataset: str, dataset_counts: str) -> None:
+    """Print the aesthetic ContextFlow banner in Claude Code slant font."""
+    banner_lines = [
+        r"   ______            __            __  ________ __               ",
+        r"  / ____/___  ____  / /____  _  __/ /_/ ____/ // /___ _      __  ",
+        r" / /   / __ \/ __ \/ __/ _ \| |/_/ __/ /_  / // // __ \ | /| / /  ",
+        r"/ /___/ /_/ / / / / /_/  __/>  </ /_/ __/ / // // /_/ / |/ |/ /   ",
+        r"\____/\____/_/ /_/\__/\___/_/|_|\__/_/   /_//_/ \____/|__/|__/    ",
+    ]
+
+    print()
+    for line in banner_lines:
+        print(f"{ORANGE_BOLD}{line}{RESET}")
+    print()
+
+    # Status Pill Box
+    mode_color = GREEN_BOLD if mode == "live" else AMBER
+    mode_tag = f"{mode_color}● {mode.upper()}{RESET}"
+
+    llm_name = (
+        f"{GREEN}Groq ({os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant')}){RESET}"
+        if os.getenv("GROQ_API_KEY") and not os.getenv("GROQ_API_KEY", "").startswith("replace")
+        else (f"{CYAN}OpenCode{RESET}" if os.getenv("OPENCODE_COMMAND") else f"{GRAY}Deterministic{RESET}")
+    )
+
+    hydra_host = os.getenv("PATHCONTEXT_HYDRADB_URL", "http://127.0.0.1:8443").replace("http://", "").replace("https://", "")
+
+    w = CARD_WIDTH
+    print(f"{BORDER}╭{'─' * (w - 2)}╮{RESET}")
+    print(f"{BORDER}│{RESET}  Engine: {mode_tag} {GRAY}│{RESET} Host: {WHITE}{hydra_host}{RESET} {GRAY}│{RESET} LLM: {llm_name}")
+    print(f"{BORDER}│{RESET}  Dataset: {PEACH}{active_dataset}{RESET} {GRAY}({dataset_counts}){RESET}")
+    print(f"{BORDER}│{RESET}  Shortcuts: {WHITE}/commands{RESET} · {WHITE}/files{RESET} · {WHITE}/snapshot{RESET} · {WHITE}/ask <q>{RESET} · {WHITE}/query <cypher>{RESET} · {WHITE}/help{RESET}")
+    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+
+
+def print_commands() -> None:
+    """Print the complete, aesthetic directory of slash commands."""
+    w = CARD_WIDTH
+    print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}COMMAND DIRECTORY{RESET} {BORDER}{'─' * (w - 22)}╮{RESET}")
+
+    categories = [
+        (
+            "QUERY & REASONING",
+            [
+                ("/ask <question>", "Retrieve grounded structural evidence & synthesize an answer"),
+                ("<question>", "Any text without '/' automatically executes /ask"),
+                ("/compare <question>", "Compare Naive RAG vs PathContext Graph token reduction"),
+                ("/query <openCypher>", "Execute raw openCypher query directly against HydraDB"),
+            ],
+        ),
+        (
+            "DATA & SNAPSHOTS",
+            [
+                ("/files", "Inspect files in data/files & snapshot readiness"),
+                ("/snapshot <file>", "Build offline HydraDB snapshot manifest for a file"),
+                ("/snapshot all", "Batch-build snapshot manifests for all files in data/files"),
+                ("/load <name>", "Switch active dataset (e.g. /load ArtOfWar or /load incidents)"),
+                ("/ingest <file>", "Ingest a document from data/files into live HydraDB graph"),
+            ],
+        ),
+        (
+            "CONFIGURATION & SESSION",
+            [
+                ("/mode <live|local>", "Toggle between live HydraDB backend and local snapshot"),
+                ("/status", "Display connection ping, graph telemetry, and epoch bookmarks"),
+                ("/clear", "Clear terminal screen and repaint Claude banner"),
+                ("/help", "Show quick reference card"),
+                ("/quit, /exit", "Exit the console"),
+            ],
+        ),
+    ]
+
+    for cat_title, items in categories:
+        print(f"{BORDER}│{RESET}  {PEACH}{BOLD}{cat_title}{RESET}")
+        for cmd, desc in items:
+            cmd_styled = f"{WHITE_BOLD}{cmd:<21}{RESET}"
+            dots = f"{GRAY}{desc}{RESET}"
+            line = f"    {cmd_styled} {dots}"
+            print(f"{BORDER}│{RESET}{line}")
+        print(f"{BORDER}│{RESET}")
+
+    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+
+
+def print_evidence_packet(packet: EvidencePacket) -> None:
+    """Render a Claude-styled evidence card with clean text wrapping."""
+    w = CARD_WIDTH
+    ans_color = GREEN_BOLD if packet.answerability == "supported" else AMBER
+    cost = packet.retrieval_stats.get("input_tokens", sum(f.token_cost for f in packet.facts))
+    cand = packet.retrieval_stats.get("candidate_chunks", packet.retrieval_stats.get("candidate_artifacts", len(packet.facts)))
+    latency = packet.retrieval_stats.get("latency_ms", "cached")
+
+    print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}EVIDENCE PACKET{RESET} {BORDER}{'─' * (w - 20)}╮{RESET}")
+    print(f"{BORDER}│{RESET}  Status: {ans_color}{packet.answerability.upper()}{RESET}  {GRAY}│{RESET}  Facts: {WHITE}{len(packet.facts)}{RESET}  {GRAY}│{RESET}  Candidates: {WHITE}{cand}{RESET}  {GRAY}│{RESET}  Latency: {WHITE}{latency}{RESET}")
+    print(f"{BORDER}├{'─' * (w - 2)}┤{RESET}")
+
+    if not packet.facts:
+        print(f"{BORDER}│{RESET}  {AMBER}No direct evidence facts retrieved for this query.{RESET}")
+    else:
+        for idx, fact in enumerate(packet.facts[:4], start=1):
+            path_str = f" {PEACH}➔{RESET} ".join(fact.path) if fact.path else "direct"
+            conf_color = GREEN if fact.confidence in ("verified", "retrieved") else AMBER
+            print(f"{BORDER}│{RESET}  {ORANGE_BOLD}◆ [{idx}]{RESET} {WHITE}{path_str}{RESET}")
+
+            # Cleanly wrap snippet
+            clean_text = " ".join(fact.text.split())
+            if len(clean_text) > 180:
+                clean_text = clean_text[:177] + "..."
+            wrapped = textwrap.wrap(f'"{clean_text}"', width=w - 8)
+            for s_line in wrapped:
+                print(f"{BORDER}│{RESET}    {GRAY}{s_line}{RESET}")
+            print(f"{BORDER}│{RESET}    {GRAY}Confidence:{RESET} {conf_color}{fact.confidence}{RESET} {GRAY}│ Score:{RESET} {fact.score:.2f} {GRAY}│ Source:{RESET} {fact.source}")
+            if idx < min(4, len(packet.facts)):
+                print(f"{BORDER}│{RESET}")
+
+    if packet.contradictions:
+        print(f"{BORDER}│{RESET}")
+        for item in packet.contradictions:
+            print(f"{BORDER}│{RESET}  {RED}⚠ Contradiction:{RESET} {item}")
+
+    if packet.uncertainty:
+        print(f"{BORDER}│{RESET}")
+        for item in packet.uncertainty:
+            print(f"{BORDER}│{RESET}  {AMBER}⚠ Note:{RESET} {item}")
+
+    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}")
+
+
+def print_grounded_answer(question: str, packet: EvidencePacket, answer_obj: Any = None) -> None:
+    """Render grounded answer with clean typography and line wrapping."""
+    w = CARD_WIDTH
+    provider = answer_obj.provider if answer_obj else "Grounded Graph Evidence"
+
+    if answer_obj:
+        raw_text = answer_obj.text.strip()
+    else:
+        # Structured fallback for offline/local mode
+        sections = []
+        for idx, fact in enumerate(packet.facts[:3], start=1):
+            path_label = " ➔ ".join(fact.path) if fact.path else fact.source
+            clean_snippet = " ".join(fact.text.split())
+            if len(clean_snippet) > 220:
+                clean_snippet = clean_snippet[:217] + "..."
+            sections.append(f"[{idx}] {path_label}\n\"{clean_snippet}\"")
+        raw_text = "\n\n".join(sections) if sections else "No supported facts found."
+        if packet.uncertainty:
+            raw_text += "\n\nNotes: " + " ".join(packet.uncertainty)
+
+    print(f"\n{BORDER}╭─{RESET} {WHITE_BOLD}GROUNDED SYNTHESIS{RESET} {GRAY}({provider}){RESET} {BORDER}{'─' * max(2, w - 26 - len(provider))}╮{RESET}")
+    for block in raw_text.splitlines():
+        if not block.strip():
+            print(f"{BORDER}│{RESET}")
+            continue
+        wrapped = textwrap.wrap(block, width=w - 6)
+        for w_line in wrapped:
+            print(f"{BORDER}│{RESET}  {w_line}")
+    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# File & Snapshot Utilities
+# ─────────────────────────────────────────────────────────────────────────────
+def list_files_and_snapshots() -> None:
+    """Print an aesthetic overview of data files and generated snapshots."""
+    DATA_FILES_DIR.mkdir(parents=True, exist_ok=True)
+    SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    data_files = sorted([f for f in DATA_FILES_DIR.iterdir() if f.is_file() and not f.name.startswith(".")])
+    snapshots = sorted([s for s in SNAPSHOTS_DIR.iterdir() if s.is_file() and s.name.endswith(".snapshot.json")])
+
+    w = CARD_WIDTH
+    print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}LOCAL FILES (data/files){RESET} {BORDER}{'─' * (w - 28)}╮{RESET}")
+    if not data_files:
+        print(f"{BORDER}│{RESET}  {GRAY}No files found in data/files/. Add PDFs, text, or CSVs here.{RESET}")
+    else:
+        for f in data_files:
+            size_mb = f.stat().st_size / (1024 * 1024)
+            size_str = f"{size_mb:.2f} MB" if size_mb >= 1 else f"{f.stat().st_size / 1024:.1f} KB"
+            snap_path = SNAPSHOTS_DIR / f"{f.stem}.snapshot.json"
+            snap_tag = f"{GREEN}● Snapshot ready{RESET}" if snap_path.exists() else f"{AMBER}○ No snapshot{RESET}"
+            print(f"{BORDER}│{RESET}  {WHITE_BOLD}{f.name:<34}{RESET} {GRAY}{size_str:>9}{RESET}  {snap_tag}")
+
+    print(f"{BORDER}├─{RESET} {PEACH}{BOLD}GENERATED SNAPSHOTS (snapshots/){RESET} {BORDER}{'─' * (w - 36)}┤{RESET}")
+    if not snapshots:
+        print(f"{BORDER}│{RESET}  {GRAY}No snapshots built yet. Run /snapshot <filename> to create one.{RESET}")
+    else:
+        for s in snapshots:
+            size_kb = f"{s.stat().st_size / 1024:.1f} KB"
+            try:
+                snap_data = json.loads(s.read_text(encoding="utf-8"))
+                counts = snap_data.get("counts", {})
+                v_count = counts.get("vertices", len(snap_data.get("vertices", [])))
+                e_count = counts.get("edges", len(snap_data.get("edges", [])))
+                details = f"{v_count} vertices · {e_count} edges"
+            except Exception:
+                details = "manifest"
+            print(f"{BORDER}│{RESET}  {PEACH}{s.name:<32}{RESET} {GRAY}{size_kb:>8}{RESET}  {CYAN}{details}{RESET}")
+
+    print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+
+
+def build_and_save_snapshot(target_name: str) -> None:
+    """Generate a HydraDB snapshot for a file in data/files or fixture."""
+    SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    if target_name in ("all", "*"):
+        data_files = [f for f in DATA_FILES_DIR.iterdir() if f.is_file() and not f.name.startswith(".")]
+        if not data_files:
+            print(f"{AMBER}No files found in data/files/ to snapshot.{RESET}")
+            return
+        print(f"{CYAN}Batch-building snapshots for {len(data_files)} file(s)...{RESET}")
+        for cand in data_files:
+            try:
+                snap = build_file_snapshot(cand)
+                out_path = SNAPSHOTS_DIR / f"{cand.stem}.snapshot.json"
+                out_path.write_text(json.dumps(snap, indent=2) + "\n", encoding="utf-8")
+                print(f"  {GREEN}✔{RESET} {cand.name} ➔ {out_path.name} ({snap['counts']['vertices']}v, {snap['counts']['edges']}e)")
+            except Exception as exc:
+                print(f"  {RED}✖{RESET} {cand.name}: {exc}")
+        return
+
+    # Check data/files
+    file_path = DATA_FILES_DIR / target_name
+    if not file_path.exists():
+        matches = [f for f in DATA_FILES_DIR.iterdir() if f.name.lower().startswith(target_name.lower())]
+        if matches:
+            file_path = matches[0]
+
+    if file_path.exists():
+        print(f"{CYAN}Extracting graph and building snapshot for {file_path.name}...{RESET}")
+        t0 = time.perf_counter()
+        snap = build_file_snapshot(file_path)
+        out_path = SNAPSHOTS_DIR / f"{file_path.stem}.snapshot.json"
+        out_path.write_text(json.dumps(snap, indent=2) + "\n", encoding="utf-8")
+        dt = (time.perf_counter() - t0) * 1000
+        print(f"{GREEN}✔ Snapshot created:{RESET} {PEACH}{out_path.name}{RESET} in {dt:.0f}ms")
+        print(f"  Vertices: {snap['counts']['vertices']} · Edges: {snap['counts']['edges']}")
+        return
+
+    # Check fixtures
+    fixture_path = FIXTURES_DIR / target_name
+    if not fixture_path.exists() and not target_name.endswith(".json"):
+        fixture_path = FIXTURES_DIR / f"{target_name}.json"
+    if fixture_path.exists():
+        print(f"{CYAN}Building snapshot from fixture {fixture_path.name}...{RESET}")
+        snap = build_snapshot(fixture_path)
+        out_path = SNAPSHOTS_DIR / f"{fixture_path.stem}.snapshot.json"
+        out_path.write_text(json.dumps(snap, indent=2) + "\n", encoding="utf-8")
+        print(f"{GREEN}✔ Snapshot created:{RESET} {PEACH}{out_path.name}{RESET} ({snap['counts']['vertices']}v, {snap['counts']['edges']}e)")
+        return
+
+    print(f"{RED}File not found in data/files/ or fixtures/: {target_name}{RESET}")
+    print(f"{GRAY}Type /files to see available files.{RESET}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Readline Auto-Completion Setup
+# ─────────────────────────────────────────────────────────────────────────────
+SLASH_COMMANDS = [
+    "/ask ",
+    "/compare ",
+    "/query ",
+    "/files",
+    "/snapshot ",
+    "/load ",
+    "/ingest ",
+    "/mode live",
+    "/mode local",
+    "/status",
+    "/clear",
+    "/help",
+    "/commands",
+    "/quit",
+    "/exit",
+]
+
+
+def setup_completer():
+    """Enable tab auto-completion for slash commands and filenames."""
+    def completer(text: str, state: int):
+        options = []
+        if text.startswith("/"):
+            options = [cmd for cmd in SLASH_COMMANDS if cmd.startswith(text)]
+        else:
+            line = readline.get_line_buffer()
+            if any(line.startswith(prefix) for prefix in ("/snapshot ", "/ingest ", "/load ")):
+                prefix = line.split(maxsplit=1)[1] if len(line.split()) > 1 else ""
+                files = [f.name for f in DATA_FILES_DIR.glob("*") if not f.name.startswith(".")]
+                snaps = [s.name for s in SNAPSHOTS_DIR.glob("*.json")]
+                cands = sorted(set(files + snaps))
+                options = [c for c in cands if c.startswith(prefix)]
+
+        return options[state] if state < len(options) else None
+
+    readline.set_completer(completer)
+    readline.parse_and_bind("tab: complete")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main Application Loop
+# ─────────────────────────────────────────────────────────────────────────────
+def main() -> int:
+    load_dotenv()
+    setup_completer()
+
+    mode = "live"
+    hydradb = _client()
+
+    # Default dataset: load incidents or ArtOfWar if available
+    active_dataset = "incidents.json"
+    active_session: LocalSnapshotSession | None = None
+    default_fixture = FIXTURES_DIR / "incidents.json"
+    if default_fixture.exists():
+        try:
+            active_session = LocalSnapshotSession.load(default_fixture)
+        except Exception:
+            pass
+
+    # Compiler for incident fixtures
+    local_compiler = ContextCompiler(load_fixture(default_fixture)) if default_fixture.exists() else None
+
+    print("\033[2J\033[H", end="")
+    summary = active_session.count_summary() if active_session else "none"
+    print_banner(mode, active_dataset, summary)
+
+    prompt_symbol = f"{ORANGE_BOLD}❯{RESET} "
+
+    while True:
+        try:
+            prompt_header = f"{ORANGE_BOLD}contextflow{RESET}{GRAY}[{GREEN if mode == 'live' else AMBER}{mode}{GRAY}:{PEACH}{active_dataset.split('.')[0]}{GRAY}]{RESET} {prompt_symbol}"
+            line = input(prompt_header).strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
+            return 0
+
+        if not line:
+            continue
+
+        # ── Navigation & System Commands ─────────────────────────────────────
+        if line in ("/quit", "/exit"):
+            print(f"{GRAY}Exiting ContextFlow console. Goodbye!{RESET}")
+            return 0
+
+        if line in ("/help", "/?"):
+            print_commands()
+            continue
+
+        if line == "/commands":
+            print_commands()
+            continue
+
+        if line == "/clear":
+            print("\033[2J\033[H", end="")
+            summary = active_session.count_summary() if active_session else "none"
+            print_banner(mode, active_dataset, summary)
+            continue
+
+        if line == "/files":
+            list_files_and_snapshots()
+            continue
+
+        if line.startswith("/snapshot"):
+            arg = line[9:].strip() or "all"
+            build_and_save_snapshot(arg)
+            continue
+
+        if line.startswith("/load"):
+            name = line[5:].strip()
+            if not name:
+                print(f"{AMBER}Usage: /load <snapshot_name or fixture>{RESET}")
+                continue
+            cand_paths = [
+                SNAPSHOTS_DIR / name,
+                SNAPSHOTS_DIR / f"{name}.snapshot.json",
+                FIXTURES_DIR / name,
+                FIXTURES_DIR / f"{name}.json",
+                DATA_FILES_DIR / name,
+            ]
+            found = next((p for p in cand_paths if p.is_file()), None)
+            if not found:
+                print(f"{RED}Snapshot/fixture not found:{RESET} {name}")
+                continue
+            try:
+                active_session = LocalSnapshotSession.load(found)
+                active_dataset = found.name
+                if active_session.kind == "incident_fixture":
+                    local_compiler = ContextCompiler(load_fixture(found))
+                print(f"{GREEN}✔ Loaded dataset:{RESET} {PEACH}{active_dataset}{RESET} ({active_session.count_summary()})")
+            except Exception as err:
+                print(f"{RED}Failed to load dataset:{RESET} {err}")
+            continue
+
+        if line.startswith("/ingest"):
+            arg = line[7:].strip()
+            if not arg:
+                print(f"{AMBER}Usage: /ingest <filename from data/files>{RESET}")
+                continue
+            if mode != "live":
+                print(f"{AMBER}/ingest requires live mode. Run /mode live first.{RESET}")
+                continue
+            target = DATA_FILES_DIR / arg
+            if not target.exists():
+                matches = [f for f in DATA_FILES_DIR.iterdir() if f.name.lower().startswith(arg.lower())]
+                if matches:
+                    target = matches[0]
+            if not target.exists():
+                print(f"{RED}File not found in data/files/: {arg}{RESET}")
+                continue
+
+            print(f"{CYAN}Ingesting {target.name} into HydraDB graph store...{RESET}")
+            t0 = time.perf_counter()
+            try:
+                from multimodal_pipeline import extract_artifacts, graph_for_artifacts
+                from pathcontext.hydradb_ingest import write_graph
+
+                artifacts = extract_artifacts(target)
+                nodes, edges = graph_for_artifacts(target, artifacts)
+                written = write_graph(hydradb, nodes, edges)
+                dt = (time.perf_counter() - t0) * 1000
+                print(f"{GREEN}✔ Successfully ingested:{RESET} {len(nodes)} nodes, {len(edges)} edges in {dt:.0f}ms")
+            except Exception as err:
+                print(f"{RED}Ingestion failed:{RESET} {err}")
+            continue
+
+        if line.startswith("/mode"):
+            parts = line.split(maxsplit=1)
+            if len(parts) > 1:
+                requested = parts[1].strip()
+                if requested in ("live", "local"):
+                    mode = requested
+                    print(f"{GREEN}✔ Mode switched to:{RESET} {mode.upper()}")
+                else:
+                    print(f"{AMBER}Mode must be 'live' or 'local'{RESET}")
+            else:
+                print(f"Current mode: {GREEN if mode == 'live' else AMBER}{mode}{RESET}")
+            continue
+
+        if line == "/status":
+            groq_key = os.getenv("GROQ_API_KEY", "")
+            groq_ok = bool(groq_key and not groq_key.startswith("replace"))
+            print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}SYSTEM STATUS{RESET} {BORDER}{'─' * (CARD_WIDTH - 18)}╮{RESET}")
+            print(f"{BORDER}│{RESET}  Engine Mode:    {GREEN if mode == 'live' else AMBER}{mode.upper()}{RESET}")
+            print(f"{BORDER}│{RESET}  HydraDB URL:    {WHITE}{hydradb.url}{RESET}")
+            print(f"{BORDER}│{RESET}  Cell ID:        {WHITE}{hydradb.cell_id}{RESET}")
+            print(f"{BORDER}│{RESET}  Queries Run:    {WHITE}{hydradb.query_count}{RESET}")
+            print(f"{BORDER}│{RESET}  Last Read Epoch:{WHITE}{hydradb.last_read_epoch or 'none'}{RESET}")
+            print(f"{BORDER}│{RESET}  Active Dataset: {PEACH}{active_dataset}{RESET} ({active_session.count_summary() if active_session else 'none'})")
+            print(f"{BORDER}│{RESET}  Groq API:       {GREEN + 'Configured (' + os.getenv('GROQ_MODEL', 'llama-3.1-8b-instant') + ')' if groq_ok else GRAY + 'Not configured'}{RESET}")
+            print(f"{BORDER}│{RESET}  OpenCode CLI:   {GREEN + 'Configured' if os.getenv('OPENCODE_COMMAND') else GRAY + 'Disabled'}{RESET}")
+
+            # Test live ping
+            if mode == "live":
+                try:
+                    t0 = time.perf_counter()
+                    hydradb.query("RETURN 1")
+                    ping_ms = (time.perf_counter() - t0) * 1000
+                    print(f"{BORDER}│{RESET}  Live Ping:      {GREEN}Connected ({ping_ms:.1f}ms){RESET}")
+                except Exception as ex:
+                    print(f"{BORDER}│{RESET}  Live Ping:      {RED}Unreachable ({ex}){RESET}")
+            print(f"{BORDER}╰{'─' * (CARD_WIDTH - 2)}╯{RESET}\n")
+            continue
+
+        # ── Compare Token Usage (Naive RAG vs PathContext Graph) ─────────────
+        if line.startswith("/compare"):
+            question = line[8:].strip()
+            if not question:
+                print(f"{AMBER}Usage: /compare <question>{RESET}")
+                continue
+            # Find candidate file for active dataset
+            active_file = None
+            if active_session:
+                clean_name = active_session.name.replace(".snapshot", "").replace(".json", "")
+                cand_file = DATA_FILES_DIR / f"{clean_name}.pdf"
+                if not cand_file.exists():
+                    matches = [f for f in DATA_FILES_DIR.iterdir() if f.stem.lower() == clean_name.lower()]
+                    if matches:
+                        cand_file = matches[0]
+                if cand_file.exists():
+                    active_file = cand_file
+            if not active_file:
+                dfs = [f for f in DATA_FILES_DIR.iterdir() if f.is_file() and not f.name.startswith(".")]
+                if dfs:
+                    active_file = dfs[0]
+
+            if not active_file:
+                print(f"{RED}No document found in data/files to benchmark.{RESET}")
+                continue
+
+            print(f"{CYAN}Running comparative benchmark on {active_file.name}...{RESET}")
+            try:
+                from compare_rag import _baseline_packet, _estimate_tokens, extract_artifacts
+                artifacts = extract_artifacts(active_file)
+                before = _baseline_packet(artifacts, 20)
+                before_tokens = _estimate_tokens(before.context)
+                before_chars = len(before.context)
+
+                # After packet (from snapshot or live)
+                if active_session and active_session.kind == "document_snapshot":
+                    after = active_session.retrieve_document(question, max_facts=4)
+                elif mode == "live":
+                    from multimodal_pipeline import retrieve as mm_retrieve
+                    after = mm_retrieve(hydradb, active_file.name, question)
+                else:
+                    after = LocalSnapshotSession.load(SNAPSHOTS_DIR / f"{active_file.stem}.snapshot.json").retrieve_document(question, max_facts=4)
+
+                after_tokens = _estimate_tokens(after.context)
+                after_chars = len(after.context)
+                tok_reduction = round((1 - after_tokens / max(before_tokens, 1)) * 100, 1)
+                char_reduction = round((1 - after_chars / max(before_chars, 1)) * 100, 1)
+
+                w = CARD_WIDTH
+                print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}TOKEN REDUCTION BENCHMARK{RESET} {BORDER}{'─' * (w - 29)}╮{RESET}")
+                print(f"{BORDER}│{RESET}  Question: {WHITE_BOLD}{question}{RESET}")
+                print(f"{BORDER}│{RESET}  Target:   {PEACH}{active_file.name}{RESET}")
+                print(f"{BORDER}├{'─' * (w - 2)}┤{RESET}")
+                print(f"{BORDER}│{RESET}  Strategy             Tokens        Characters     Chunks    Proven Citations")
+                print(f"{BORDER}│{RESET}  {GRAY}{'─' * (w - 6)}{RESET}")
+                print(f"{BORDER}│{RESET}  Naive RAG          {before_tokens:>8} tok    {before_chars:>10} chars   {len(before.facts):>6}     0 (unverified)")
+                print(f"{BORDER}│{RESET}  PathContext Graph  {after_tokens:>8} tok    {after_chars:>10} chars   {len(after.facts):>6}     {len(after.facts)} (ranked & cited)")
+                print(f"{BORDER}├{'─' * (w - 2)}┤{RESET}")
+                print(f"{BORDER}│{RESET}  {GREEN_BOLD}Efficiency Gain:{RESET}   {GREEN_BOLD}-{tok_reduction}% tokens{RESET}  {GRAY}│{RESET}  {GREEN_BOLD}-{char_reduction}% context chars{RESET}  {GRAY}│{RESET}  {GREEN_BOLD}{len(before.facts) - len(after.facts)} fewer chunks{RESET}")
+                print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
+            except Exception as err:
+                print(f"{RED}Comparison failed:{RESET} {err}")
+            continue
+
+        # ── openCypher Query ─────────────────────────────────────────────────
+        if line.startswith("/query"):
+            cypher = line[6:].strip()
+            if not cypher:
+                print(f"{AMBER}Usage: /query <openCypher query>{RESET}")
+                continue
+            if mode != "live":
+                print(f"{AMBER}/query executes directly against HydraDB in live mode.{RESET}")
+                print(f"{GRAY}Switch to live mode with: /mode live{RESET}")
+                continue
+
+            print(f"{GRAY}Executing openCypher...{RESET}")
+            try:
+                t0 = time.perf_counter()
+                result = hydradb.query(cypher)
+                dt = (time.perf_counter() - t0) * 1000
+                print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}QUERY RESULT{RESET} {GRAY}({dt:.1f}ms){RESET} {BORDER}{'─' * (CARD_WIDTH - 24)}╮{RESET}")
+                print(json.dumps(result, indent=2, default=str))
+                print(f"{BORDER}╰{'─' * (CARD_WIDTH - 2)}╯{RESET}\n")
+            except HydraDBError as err:
+                print(f"{RED}HydraDB error:{RESET} {err}")
+            continue
+
+        # ── Natural Language /ask Pipeline ───────────────────────────────────
+        question = line[5:].strip() if line.startswith("/ask ") else line
+
+        print(f"\n{GRAY}● Compiling structural graph context...{RESET}")
+        try:
+            t0 = time.perf_counter()
+            packet: EvidencePacket | None = None
+
+            if mode == "live":
+                try:
+                    if active_session and active_session.kind == "document_snapshot":
+                        from multimodal_pipeline import retrieve as mm_retrieve
+                        packet = mm_retrieve(hydradb, active_session.source_path.name, question)
+                    else:
+                        packet = HydraDBContextCompiler(hydradb).compile(question)
+                except HydraDBError as db_err:
+                    print(f"{AMBER}HydraDB live query failed or unreachable:{RESET} {db_err}")
+                    if active_session:
+                        print(f"{GRAY}Falling back to local snapshot retrieval...{RESET}")
+                        packet = active_session.retrieve_document(question)
+                    else:
+                        raise
+
+            else:
+                # Local Mode
+                if active_session:
+                    if active_session.kind == "document_snapshot":
+                        packet = active_session.retrieve_document(question)
+                    elif local_compiler:
+                        packet = local_compiler.compile(question)
+                elif local_compiler:
+                    packet = local_compiler.compile(question)
+                else:
+                    print(f"{RED}No active snapshot or compiler loaded.{RESET}")
+                    continue
+
+            retrieval_ms = (time.perf_counter() - t0) * 1000
+            if packet:
+                packet.retrieval_stats["latency_ms"] = f"{retrieval_ms:.1f}ms"
+                print_evidence_packet(packet)
+
+                # Synthesis
+                answer_obj = None
+                groq_key = os.getenv("GROQ_API_KEY", "")
+                if packet.facts and groq_key and not groq_key.startswith("replace"):
+                    print(f"{GRAY}● Synthesizing grounded answer via LLM...{RESET}")
+                    try:
+                        answer_obj = synthesize(
+                            question,
+                            packet,
+                            groq_api_key=groq_key,
+                            groq_model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+                        )
+                    except LLMError as lerr:
+                        print(f"{AMBER}LLM synthesis note:{RESET} {lerr}")
+
+                print_grounded_answer(question, packet, answer_obj)
+
+        except (HydraDBError, LLMError, ValueError, Exception) as err:
+            print(f"{RED}Error:{RESET} {err}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

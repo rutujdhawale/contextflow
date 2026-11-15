@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  contextflow:
+    build: .
+    container_name: contextflow
+    stdin_open: true
+    tty: true
+    environment:
+      - PATHCONTEXT_HYDRADB_URL=http://127.0.0.1:8443
+      - PATHCONTEXT_GRAPH_ID=default
+      - PATHCONTEXT_CELL_ID=cell-0
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
+    volumes:
+      - ./data/files:/app/data/files
+      - ./snapshots:/app/snapshots
+    command: ["python3", "tui.py"]
