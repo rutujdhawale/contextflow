@@ -1,0 +1,111 @@
+{
+  "format": "pathcontext-hydradb-snapshot-v1",
+  "source_file": "/home/rutuj21/hydradb-hackathon/ContextFlow/data/files/sre_distributed_systems.pdf",
+  "filename": "sre_distributed_systems.pdf",
+  "modality": "pdf",
+  "identity": "stable integer id; external_id preserves source identity",
+  "vertices": [
+    {
+      "id": 901384906,
+      "label": "Document",
+      "external_id": "sre_distributed_systems.pdf",
+      "properties": {
+        "source_file": "sre_distributed_systems.pdf",
+        "title": "Site Reliability Engineering & Distributed System Resiliency",
+        "modality": "pdf",
+        "chunk_count": 5
+      }
+    },
+    {
+      "id": 44236128,
+      "label": "Chunk",
+      "external_id": "sre_distributed_systems.pdf:p15:c1",
+      "properties": {
+        "text": "Service Level Indicators (SLIs) are quantitative measurements of service behavior, typically availability, latency, throughput, or error rate. A Service Level Objective (SLO) specifies a target threshold for an SLI (e.g. 99.9% of requests served in under 150ms over 30 days). The Error Budget is the allowed unreliability: 100% minus the SLO (e.g. 0.1% = 43.8 minutes of downtime per month). Error budgets govern development velocity: when exhausted, product releases halt in favor of reliability engineering.",
+        "summary": "Service Level Indicators (SLIs) are quantitative measurements of service behavior, typically availability, latency, throughput, or error rate. A Service Level Objective (SLO) speci",
+        "page_number": 15,
+        "section": "1. Site Reliability Principles: SLIs, SLOs & Error Budgets",
+        "source_file": "sre_distributed_systems.pdf"
+      }
+    },
+    {
+      "id": 532174208,
+      "label": "Chunk",
+      "external_id": "sre_distributed_systems.pdf:p64:c2",
+      "properties": {
+        "text": "Raft is a distributed consensus algorithm designed for understandability and operational resilience. Raft divides consensus into three subproblems: 1) Leader Election, where servers transition from Follower to Candidate and require a majority quorum of votes; 2) Log Replication, where the Leader accepts log entries from clients, replicates them across Followers, and commits once a majority acknowledges; 3) Safety, which ensures that if a server commits a log entry at a given index, no other server can commit a different entry for that index.",
+        "summary": "Raft is a distributed consensus algorithm designed for understandability and operational resilience. Raft divides consensus into three subproblems: 1) Leader Election, where server",
+        "page_number": 64,
+        "section": "2. Distributed Consensus: The Raft Algorithm",
+        "source_file": "sre_distributed_systems.pdf"
+      }
+    },
+    {
+      "id": 2261078098,
+      "label": "Chunk",
+      "external_id": "sre_distributed_systems.pdf:p112:c3",
+      "properties": {
+        "text": "Cascading failures occur when an outage in one downstream service exhausts thread pools and network connections across upstream callers. Circuit breakers prevent cascading failure by monitoring error rates: in Closed state requests flow normally; upon tripping an error threshold the breaker transitions to Open, immediately rejecting calls without invoking downstream systems; after a cooldown period it enters Half-Open to test recovery. Bulkheads isolate resources into dedicated execution pools to prevent one noisy neighbor from exhausting system-wide memory.",
+        "summary": "Cascading failures occur when an outage in one downstream service exhausts thread pools and network connections across upstream callers. Circuit breakers prevent cascading failure",
+        "page_number": 112,
+        "section": "3. Fault Tolerance: Circuit Breakers, Bulkheads & Retries",
+        "source_file": "sre_distributed_systems.pdf"
+      }
+    },
+    {
+      "id": 457062036,
+      "label": "Chunk",
+      "external_id": "sre_distributed_systems.pdf:p178:c4",
+      "properties": {
+        "text": "Operational incident response follows a structured protocol: Detection, Triage, Containment, Mitigation, and Post-Mortem. Containment prioritizes restoring user SLOs over root-cause analysis: automated rollbacks revert recent deployments to the last known healthy revision using kubectl rollout undo deployment/<service>. Feature flags are toggled off. Post-mortem reviews adhere to blameless culture, identifying structural failure paths rather than human error.",
+        "summary": "Operational incident response follows a structured protocol: Detection, Triage, Containment, Mitigation, and Post-Mortem. Containment prioritizes restoring user SLOs over root-caus",
+        "page_number": 178,
+        "section": "4. Incident Response & Automated Rollback Runbooks",
+        "source_file": "sre_distributed_systems.pdf"
+      }
+    },
+    {
+      "id": 1303476688,
+      "label": "Chunk",
+      "external_id": "sre_distributed_systems.pdf:p240:c5",
+      "properties": {
+        "text": "Microservices maintain data isolation by avoiding shared transactional databases. To achieve cross-service consistency without distributed two-phase commits, systems use the Transactional Outbox Pattern: business entities and domain events are written to the local database within the same atomic transaction. A Change Data Capture (CDC) process (such as Debezium reading Postgres write-ahead logs) captures outbox records and streams them to Kafka topics for asynchronous consumer ingestion.",
+        "summary": "Microservices maintain data isolation by avoiding shared transactional databases. To achieve cross-service consistency without distributed two-phase commits, systems use the Transa",
+        "page_number": 240,
+        "section": "5. Event Streaming, Change Data Capture (CDC) & Outbox Pattern",
+        "source_file": "sre_distributed_systems.pdf"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": 901384906,
+      "target": 44236128,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 901384906,
+      "target": 532174208,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 901384906,
+      "target": 2261078098,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 901384906,
+      "target": 457062036,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 901384906,
+      "target": 1303476688,
+      "type": "CONTAINS_CHUNK"
+    }
+  ],
+  "counts": {
+    "vertices": 6,
+    "edges": 5
+  }
+}

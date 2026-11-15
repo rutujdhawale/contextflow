@@ -1,0 +1,162 @@
+{
+  "format": "pathcontext-hydradb-snapshot-v1",
+  "source_file": "/home/rutuj21/hydradb-hackathon/ContextFlow/data/files/database_systems.pdf",
+  "filename": "database_systems.pdf",
+  "modality": "pdf",
+  "identity": "stable integer id; external_id preserves source identity",
+  "vertices": [
+    {
+      "id": 2023790604,
+      "label": "Document",
+      "external_id": "database_systems.pdf",
+      "properties": {
+        "source_file": "database_systems.pdf",
+        "title": "Database Systems Concepts, Schemas, & Transactions",
+        "modality": "pdf",
+        "chunk_count": 8
+      }
+    },
+    {
+      "id": 2779442179,
+      "label": "Chunk",
+      "external_id": "database_systems.pdf:p12:c1",
+      "properties": {
+        "text": "A relational database schema S is defined by a set of relation schemas R1, R2, ..., Rn and a set of integrity constraints. A relation schema R(A1, A2, ..., An) is made up of a relation name R and a list of attributes A. Each attribute Ai is the name of a role played by some domain D in the relation schema R. A candidate key is a minimal superkey of relation schema R such that no proper subset is a superkey. Every relation schema must possess at least one primary key chosen from the candidate keys to guarantee entity integrity.",
+        "summary": "A relational database schema S is defined by a set of relation schemas R1, R2, ..., Rn and a set of integrity constraints. A relation schema R(A1, A2, ..., An) is made up of a rela",
+        "page_number": 12,
+        "section": "1. Relational Model & Schema Definitions",
+        "source_file": "database_systems.pdf"
+      }
+    },
+    {
+      "id": 3128702176,
+      "label": "Chunk",
+      "external_id": "database_systems.pdf:p28:c2",
+      "properties": {
+        "text": "Referential integrity constraints specify relationships between tuples in two relations: the referencing relation and the referenced relation. A set of attributes FK in relation schema R1 is a foreign key of R1 that references relation R2 if the attributes in FK have the same domain as the primary key PK of R2, and for any tuple t1 in R1, either t1[FK] is null or matches the primary key value t2[PK] of some tuple t2 in R2. Foreign keys prevent dangling references and maintain consistency across normalized entity boundaries.",
+        "summary": "Referential integrity constraints specify relationships between tuples in two relations: the referencing relation and the referenced relation. A set of attributes FK in relation sc",
+        "page_number": 28,
+        "section": "2. Referential Integrity & Foreign Key Constraints",
+        "source_file": "database_systems.pdf"
+      }
+    },
+    {
+      "id": 3585757674,
+      "label": "Chunk",
+      "external_id": "database_systems.pdf:p85:c3",
+      "properties": {
+        "text": "A B+ Tree is a self-balancing tree data structure that maintains sorted data and allows searches, sequential access, insertions, and deletions in logarithmic time O(log N). In a B+ tree of order p, internal nodes guide search queries while all actual data pointers reside exclusively in the leaf nodes. Leaf nodes are linked sequentially via pointers to facilitate high-throughput range scans. Hash indexes provide O(1) point lookups based on an exact hash function but cannot support range queries.",
+        "summary": "A B+ Tree is a self-balancing tree data structure that maintains sorted data and allows searches, sequential access, insertions, and deletions in logarithmic time O(log N). In a B+",
+        "page_number": 85,
+        "section": "3. Indexing Structures: B+ Trees & Hash Indices",
+        "source_file": "database_systems.pdf"
+      }
+    },
+    {
+      "id": 4187213148,
+      "label": "Chunk",
+      "external_id": "database_systems.pdf:p142:c4",
+      "properties": {
+        "text": "A database transaction is a logical unit of work that must satisfy ACID properties: Atomicity guarantees all operations succeed or all are rolled back; Consistency guarantees database transitions only between valid states satisfying all invariants; Isolation guarantees concurrent transactions execute without interference as if serially; Durability guarantees committed changes survive system crashes or power failures via write-ahead logging.",
+        "summary": "A database transaction is a logical unit of work that must satisfy ACID properties: Atomicity guarantees all operations succeed or all are rolled back; Consistency guarantees datab",
+        "page_number": 142,
+        "section": "4. ACID Properties & Transaction Lifecycle",
+        "source_file": "database_systems.pdf"
+      }
+    },
+    {
+      "id": 1756947253,
+      "label": "Chunk",
+      "external_id": "database_systems.pdf:p190:c5",
+      "properties": {
+        "text": "Two-Phase Locking (2PL) is a concurrency control protocol guaranteeing serializability. A transaction is divided into an expanding growing phase where locks are acquired and no locks are released, and a shrinking phase where locks are released and no new locks can be acquired. Strict 2PL holds exclusive write locks until transaction commit or abort to prevent cascading aborts. Modern high-concurrency databases utilize Multi-Version Concurrency Control (MVCC) where readers never block writers and writers never block readers by maintaining snapshot version chains.",
+        "summary": "Two-Phase Locking (2PL) is a concurrency control protocol guaranteeing serializability. A transaction is divided into an expanding growing phase where locks are acquired and no loc",
+        "page_number": 190,
+        "section": "5. Concurrency Control: Two-Phase Locking (2PL) & MVCC",
+        "source_file": "database_systems.pdf"
+      }
+    },
+    {
+      "id": 1065367080,
+      "label": "Chunk",
+      "external_id": "database_systems.pdf:p235:c6",
+      "properties": {
+        "text": "Normalization decomposes relations with anomalies to produce smaller, well-structured relations. First Normal Form (1NF) disallows multivalued and composite attributes. Second Normal Form (2NF) requires 1NF and that every non-prime attribute is fully functionally dependent on the entire primary key. Third Normal Form (3NF) requires 2NF and eliminates transitive dependencies. Boyce-Codd Normal Form (BCNF) strictly requires that for every functional dependency X -> Y, X must be a superkey.",
+        "summary": "Normalization decomposes relations with anomalies to produce smaller, well-structured relations. First Normal Form (1NF) disallows multivalued and composite attributes. Second Norm",
+        "page_number": 235,
+        "section": "6. Database Normalization & Functional Dependencies",
+        "source_file": "database_systems.pdf"
+      }
+    },
+    {
+      "id": 369253540,
+      "label": "Chunk",
+      "external_id": "database_systems.pdf:p310:c7",
+      "properties": {
+        "text": "Write-Ahead Logging (WAL) ensures durability and atomicity by requiring that any log record describing an update must be flushed to non-volatile disk storage before the corresponding dirty data page is written to disk. The ARIES recovery algorithm operates in three distinct phases following a crash: 1) Analysis phase scans log forward to identify dirty pages and active transactions; 2) Redo phase repeats history from the smallest unwritten LSN to restore state; 3) Undo phase rolls back active transactions backwards to clean uncommitted states.",
+        "summary": "Write-Ahead Logging (WAL) ensures durability and atomicity by requiring that any log record describing an update must be flushed to non-volatile disk storage before the correspondi",
+        "page_number": 310,
+        "section": "7. Write-Ahead Logging (WAL) & ARIES Crash Recovery",
+        "source_file": "database_systems.pdf"
+      }
+    },
+    {
+      "id": 4191990529,
+      "label": "Chunk",
+      "external_id": "database_systems.pdf:p390:c8",
+      "properties": {
+        "text": "Distributed database architectures partition data across multiple cluster nodes via range-based, hash-based, or directory-based sharding. The CAP theorem states that a distributed data store can simultaneously provide at most two of three guarantees: Consistency (every read receives the most recent write or an error), Availability (every non-failing node returns a non-error response without guarantee of latest write), and Partition Tolerance (system continues operating despite arbitrary packet loss or network partitioning).",
+        "summary": "Distributed database architectures partition data across multiple cluster nodes via range-based, hash-based, or directory-based sharding. The CAP theorem states that a distributed",
+        "page_number": 390,
+        "section": "8. Distributed Storage, Sharding & The CAP Theorem",
+        "source_file": "database_systems.pdf"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": 2023790604,
+      "target": 2779442179,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 2023790604,
+      "target": 3128702176,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 2023790604,
+      "target": 3585757674,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 2023790604,
+      "target": 4187213148,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 2023790604,
+      "target": 1756947253,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 2023790604,
+      "target": 1065367080,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 2023790604,
+      "target": 369253540,
+      "type": "CONTAINS_CHUNK"
+    },
+    {
+      "source": 2023790604,
+      "target": 4191990529,
+      "type": "CONTAINS_CHUNK"
+    }
+  ],
+  "counts": {
+    "vertices": 9,
+    "edges": 8
+  }
+}

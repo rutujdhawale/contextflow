@@ -1,6 +1,6 @@
-# PathContext
+# ContextFlow
 
-PathContext is a deterministic structural context compiler for AI agents. It
+ContextFlow is a deterministic structural context compiler for AI agents. It
 resolves known incident entities, runs bounded traversal recipes, selects a
 minimum evidence set under a token budget, and returns provenance for every
 fact.

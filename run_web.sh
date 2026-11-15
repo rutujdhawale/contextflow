@@ -47,9 +47,9 @@ exec ttyd \
   -i 0.0.0.0 \
   -W \
   -w "$APP_DIR" \
-  -t fontSize=14 \
-  -t fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" \
+  -t fontSize=16 \
+  -t fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace" \
   -t letterSpacing=0 \
-  -t lineHeight=1.2 \
-  -t "theme={\"background\": \"#0b0c10\", \"foreground\": \"#eceff4\", \"cursor\": \"#FF5719\", \"selectionBackground\": \"#ff571933\"}" \
+  -t lineHeight=1.25 \
+  -t "theme={\"background\": \"#090a0f\", \"foreground\": \"#f0f2f8\", \"cursor\": \"#FF5719\", \"selectionBackground\": \"#ff571933\"}" \
   "$PYTHON_BIN" "$APP_DIR/tui.py"

@@ -73,6 +73,34 @@ def get_layout() -> tuple[int, str]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Snapshot & Graph Loading
 # ─────────────────────────────────────────────────────────────────────────────
+ENGLISH_STOP_WORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", 
+    "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", 
+    "but", "by", "can", "did", "do", "does", "doing", "down", "during", "each", "few", "for", 
+    "from", "further", "had", "has", "have", "having", "he", "her", "here", "hers", "him", 
+    "his", "how", "i", "if", "in", "into", "is", "it", "its", "itself", "me", "more", "most", 
+    "my", "no", "nor", "not", "of", "off", "on", "once", "only", "or", "other", "our", 
+    "out", "over", "own", "same", "she", "should", "so", "some", "such", "than", "that", 
+    "the", "their", "theirs", "them", "then", "there", "these", "they", "this", "those", 
+    "through", "to", "too", "under", "until", "up", "very", "was", "we", "were", "what", 
+    "when", "where", "which", "while", "who", "whom", "why", "with", "you", "your"
+}
+
+
+def _norm_term(s: str) -> str:
+    """Normalize word removing punctuation and quotes."""
+    return s.lower().replace("'", "").replace("’", "").replace('"', "").strip(".,?!:;()[]{}<>/\\|`*~-")
+
+
+def extract_query_terms(question: str) -> set[str]:
+    """Extract substantive keywords removing common English stop words."""
+    raw = [_norm_term(t) for t in question.split()]
+    terms = {t for t in raw if len(t) > 2 and t not in ENGLISH_STOP_WORDS}
+    if not terms:
+        terms = {t for t in raw if len(t) > 1}
+    return terms
+
+
 class LocalSnapshotSession:
     """Manages loaded snapshot manifest or fixture for offline local queries."""
 
@@ -103,16 +131,28 @@ class LocalSnapshotSession:
         return f"{len(self.vertices)} vertices · {len(self.edges)} edges"
 
     def retrieve_document(self, question: str, max_facts: int = 4) -> EvidencePacket:
-        """Offline deterministic retrieval over document snapshot vertices."""
-        terms = {t.strip(".,?!:;\"'").lower() for t in question.split() if len(t) > 2}
+        """Offline deterministic retrieval over document snapshot vertices with stopword filtering."""
+        terms = extract_query_terms(question)
         candidates: list[Fact] = []
         for vertex in self.vertices:
             props = vertex.get("properties", {})
             text = props.get("text") or props.get("content") or props.get("summary") or ""
             if not text:
                 continue
-            haystack = text.lower()
-            score = sum(term in haystack for term in terms)
+
+            section = props.get("section", "")
+            summary = props.get("summary", "")
+            haystack = _norm_term(f"{section} {summary} {text}")
+
+            # Substantive keyword matching
+            hits = sum(1 for term in terms if term in haystack)
+            if hits == 0 or (len(terms) >= 3 and hits < 2):
+                score = 0.0
+            else:
+                concept_bonus = (hits ** 2) * 10
+                freq_bonus = min(20, sum(haystack.count(term) for term in terms))
+                score = float(concept_bonus + freq_bonus)
+
             label = vertex.get("label", "Node")
             ext_id = vertex.get("external_id", str(vertex.get("id")))
 
@@ -133,8 +173,8 @@ class LocalSnapshotSession:
                     text=text,
                     source=f"snapshot:{self.name}",
                     path=path,
-                    confidence="verified" if score > 1 else ("retrieved" if score == 1 else "weak-match"),
-                    score=float(score),
+                    confidence="verified" if score > 30 else ("retrieved" if score > 0 else "weak-match"),
+                    score=score,
                     token_cost=max(1, len(text.split())),
                 )
             )
@@ -199,17 +239,19 @@ def print_banner(mode: str = "", active_dataset: str = "", dataset_counts: str =
 
 
 def print_suggestions_card() -> None:
-    """Print interactive discovery card with 1-4 shortcuts and command cheat sheet."""
+    """Print interactive discovery card with 1-6 shortcuts and command cheat sheet."""
     w, _ = get_layout()
     title = "QUICK START & COMMAND CHEAT SHEET"
-    hint = "(type 1-4 or any /cmd)"
+    hint = "(type 1-6 or any /cmd)"
     dashes = max(2, w - 3 - len(title) - 1 - len(hint) - 2)
     print(f"{BORDER}╭─{RESET} {ORANGE_BOLD}{title}{RESET} {GRAY}{hint}{RESET} {BORDER}{'─' * dashes}╮{RESET}")
     items = [
-        ("[1]", "Which change caused INC-1042 and who owns it?", "Root-Cause Analysis"),
-        ("[2]", "What are the five constant factors in the art of war?", "Sun Tzu Graph"),
-        ("[3]", "What are database schema constraints & dependencies?", "System Architecture"),
-        ("[4]", "/compare What are the five constant factors in the art of war?", "Token Benchmark"),
+        ("[1]", "Which change caused INC-1042 and who owns it?", "Incident Topology"),
+        ("[2]", "What are database schema constraints & candidate keys?", "Database Systems"),
+        ("[3]", "How does Raft leader election work & circuit breakers?", "SRE & Architecture"),
+        ("[4]", "What is Law 33: Discover each man's thumbscrew?", "48 Laws of Power"),
+        ("[5]", "What are the five constant factors in the art of war?", "Sun Tzu Graph"),
+        ("[6]", "/compare What are database schema constraints & keys?", "Token Benchmark"),
     ]
     for num, q, tag in items:
         print(f"{BORDER}│{RESET}  {WHITE_BOLD}{num}{RESET} {PEACH}{q[:54]:<54}{RESET} {GRAY}{tag[:19]:<19}{RESET}  {BORDER}│{RESET}")
@@ -372,20 +414,30 @@ def list_files_and_snapshots() -> None:
     snapshots = sorted([s for s in SNAPSHOTS_DIR.iterdir() if s.is_file() and s.name.endswith(".snapshot.json")])
 
     w, margin = get_layout()
-    print(f"\n{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}FILES (data/files){RESET} {BORDER}{'─' * (w - 28)}╮{RESET}")
+    title1 = "FILES (data/files)"
+    dashes1 = max(2, w - 4 - len(title1))
+    print(f"\n{margin}{BORDER}╭─{RESET} {ORANGE_BOLD}{title1}{RESET} {BORDER}{'─' * dashes1}╮{RESET}")
     if not data_files:
-        print(f"{margin}{BORDER}│{RESET}  {GRAY}No files found in data/files/. Add PDFs, text, or CSVs here.{RESET}")
+        line = "No files found in data/files/. Add PDFs or text files here."
+        print(f"{margin}{BORDER}│{RESET}  {GRAY}{line[:w-6]:<{w-6}}{RESET}  {BORDER}│{RESET}")
     else:
         for f in data_files:
             size_mb = f.stat().st_size / (1024 * 1024)
             size_str = f"{size_mb:.2f} MB" if size_mb >= 1 else f"{f.stat().st_size / 1024:.1f} KB"
             snap_path = SNAPSHOTS_DIR / f"{f.stem}.snapshot.json"
             snap_tag = f"{GREEN}● Snapshot ready{RESET}" if snap_path.exists() else f"{AMBER}○ No snapshot{RESET}"
-            print(f"{margin}{BORDER}│{RESET}  {WHITE_BOLD}{f.name:<38}{RESET} {GRAY}{size_str:>9}{RESET}  {snap_tag}")
+            name_col = f"{f.name[:34]:<34}"
+            size_col = f"{size_str:>9}"
+            tag_raw_len = 16  # visual length of '● Snapshot ready' / '○ No snapshot'
+            pad = max(0, w - 6 - (34 + 1 + 9 + 2 + tag_raw_len))
+            print(f"{margin}{BORDER}│{RESET}  {WHITE_BOLD}{name_col}{RESET} {GRAY}{size_col}{RESET}  {snap_tag}{' ' * pad}  {BORDER}│{RESET}")
 
-    print(f"{margin}{BORDER}├─{RESET} {PEACH}{BOLD}GENERATED SNAPSHOTS (snapshots/){RESET} {BORDER}{'─' * (w - 36)}┤{RESET}")
+    title2 = "GENERATED SNAPSHOTS (snapshots/)"
+    dashes2 = max(2, w - 4 - len(title2))
+    print(f"{margin}{BORDER}├─{RESET} {PEACH}{BOLD}{title2}{RESET} {BORDER}{'─' * dashes2}┤{RESET}")
     if not snapshots:
-        print(f"{margin}{BORDER}│{RESET}  {GRAY}No snapshots built yet. Run /snapshot <filename> to create one.{RESET}")
+        line = "No snapshots built yet. Run /snapshot <path> to create one."
+        print(f"{margin}{BORDER}│{RESET}  {GRAY}{line[:w-6]:<{w-6}}{RESET}  {BORDER}│{RESET}")
     else:
         for s in snapshots:
             size_kb = f"{s.stat().st_size / 1024:.1f} KB"
@@ -394,10 +446,14 @@ def list_files_and_snapshots() -> None:
                 counts = snap_data.get("counts", {})
                 v_count = counts.get("vertices", len(snap_data.get("vertices", [])))
                 e_count = counts.get("edges", len(snap_data.get("edges", [])))
-                details = f"{v_count} vertices · {e_count} edges"
+                details = f"{v_count}v · {e_count}e"
             except Exception:
                 details = "manifest"
-            print(f"{margin}{BORDER}│{RESET}  {PEACH}{s.name:<36}{RESET} {GRAY}{size_kb:>8}{RESET}  {CYAN}{details}{RESET}")
+            name_col = f"{s.name[:34]:<34}"
+            size_col = f"{size_kb:>10}"
+            det_col = f"{details:<16}"
+            pad = max(0, w - 6 - (34 + 1 + 10 + 2 + 16))
+            print(f"{margin}{BORDER}│{RESET}  {PEACH}{name_col}{RESET} {GRAY}{size_col}{RESET}  {CYAN}{det_col}{RESET}{' ' * pad}  {BORDER}│{RESET}")
 
     print(f"{margin}{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
 
@@ -534,7 +590,9 @@ def run_cli_loop() -> int:
 
     # Preload all snapshots from snapshots/ directory
     available_snapshots: dict[str, LocalSnapshotSession] = {}
-    for sf in SNAPSHOTS_DIR.glob("*.snapshot.json"):
+    for sf in sorted(SNAPSHOTS_DIR.glob("*.snapshot.json")):
+        if sf.stat().st_size > 5 * 1024 * 1024:
+            continue  # Skip massive local-only uncommitted snapshot
         try:
             available_snapshots[sf.stem] = LocalSnapshotSession.load(sf)
         except Exception:
@@ -575,12 +633,14 @@ def run_cli_loop() -> int:
         if not line:
             continue
 
-        # Quick-pick 1-4 shortcuts
+        # Quick-pick 1-6 shortcuts
         quick_map = {
             "1": "Which change caused INC-1042 and who owns it?",
-            "2": "What are the five constant factors in the art of war?",
-            "3": "What are the database schema constraints and dependencies?",
-            "4": "/compare What are the five constant factors in the art of war?",
+            "2": "What are database schema constraints & candidate keys?",
+            "3": "How does Raft leader election work & circuit breakers?",
+            "4": "What is Law 33: Discover each man's thumbscrew?",
+            "5": "What are the five constant factors in the art of war?",
+            "6": "/compare What are database schema constraints and keys?",
         }
         if line in quick_map:
             line = quick_map[line]
@@ -773,59 +833,101 @@ def run_cli_loop() -> int:
             if not question:
                 print(f"{AMBER}Usage: /compare <question>{RESET}")
                 continue
-            # Find candidate file for active dataset
-            active_file = None
-            if active_session:
-                clean_name = active_session.name.replace(".snapshot", "").replace(".json", "")
-                cand_file = DATA_FILES_DIR / f"{clean_name}.pdf"
-                if not cand_file.exists():
-                    matches = [f for f in DATA_FILES_DIR.iterdir() if f.stem.lower() == clean_name.lower()]
-                    if matches:
-                        cand_file = matches[0]
-                if cand_file.exists():
-                    active_file = cand_file
-            if not active_file:
-                dfs = [f for f in DATA_FILES_DIR.iterdir() if f.is_file() and not f.name.startswith(".")]
-                if dfs:
-                    active_file = dfs[0]
 
-            if not active_file:
-                print(f"{RED}No document found in data/files to benchmark.{RESET}")
+            # 1. Match the best document snapshot by question terms
+            terms = extract_query_terms(question)
+            best_session: LocalSnapshotSession | None = None
+            best_score = -1.0
+
+            for s_name, s_sess in available_snapshots.items():
+                if s_sess.kind == "document_snapshot":
+                    score = 0.0
+                    for v in s_sess.vertices:
+                        props = v.get("properties", {})
+                        sec = props.get("section", "")
+                        sum_text = props.get("summary", "")
+                        body = props.get("text", "")
+                        haystack = _norm_term(f"{sec} {sum_text} {body}")
+                        hits = sum(1 for term in terms if term in haystack)
+                        if hits > 0:
+                            score += (hits ** 2) * 10
+                    if score > best_score:
+                        best_score = score
+                        best_session = s_sess
+
+            if best_session is None or best_score <= 0:
+                if active_session and active_session.kind == "document_snapshot":
+                    best_session = active_session
+                elif available_snapshots:
+                    best_session = next(iter(available_snapshots.values()))
+
+            if not best_session:
+                print(f"{RED}No document snapshot available to benchmark.{RESET}")
                 continue
 
-            print(f"{CYAN}Running comparative benchmark on {active_file.name}...{RESET}")
+            # Display name of target
+            target_display = best_session.name
+            clean_stem = best_session.name.replace(".snapshot", "").replace(".json", "")
+            matched_file = next((f for f in DATA_FILES_DIR.iterdir() if f.stem.lower() == clean_stem.lower()), None)
+            if matched_file:
+                target_display = matched_file.name
+
+            print(f"{CYAN}Running comparative benchmark on {PEACH}{target_display}{CYAN}...{RESET}")
             try:
-                from compare_rag import _baseline_packet, _estimate_tokens, extract_artifacts
-                artifacts = extract_artifacts(active_file)
-                before = _baseline_packet(artifacts, 20)
-                before_tokens = _estimate_tokens(before.context)
-                before_chars = len(before.context)
+                # 2. Compute Naive RAG baseline from the SAME target document
+                all_chunks = [
+                    v.get("properties", {}).get("text") or v.get("properties", {}).get("summary") or ""
+                    for v in best_session.vertices
+                    if v.get("label") in ("Artifact", "Chunk") and (v.get("properties", {}).get("text") or v.get("properties", {}).get("summary"))
+                ]
 
-                # After packet (from snapshot or live)
-                if active_session and active_session.kind == "document_snapshot":
-                    after = active_session.retrieve_document(question, max_facts=4)
-                elif mode == "live":
-                    from multimodal_pipeline import retrieve as mm_retrieve
-                    after = mm_retrieve(hydradb, active_file.name, question)
-                else:
-                    after = LocalSnapshotSession.load(SNAPSHOTS_DIR / f"{active_file.stem}.snapshot.json").retrieve_document(question, max_facts=4)
+                naive_chunks = all_chunks[:20] if all_chunks else [""]
+                naive_context = "\n".join(f"- {c}" for c in naive_chunks)
+                before_tokens = max(1, (len(naive_context) + 3) // 4)
+                before_chars = len(naive_context)
+                before_chunks_count = len(naive_chunks)
 
-                after_tokens = _estimate_tokens(after.context)
+                # 3. PathContext Graph: Top verified, bounded facts from the SAME document
+                max_facts = 1 if len(all_chunks) <= 4 else 2
+                after = best_session.retrieve_document(question, max_facts=max_facts)
+                after_tokens = max(1, (len(after.context) + 3) // 4)
                 after_chars = len(after.context)
-                tok_reduction = round((1 - after_tokens / max(before_tokens, 1)) * 100, 1)
-                char_reduction = round((1 - after_chars / max(before_chars, 1)) * 100, 1)
+                after_chunks_count = len(after.facts)
+
+                # Token & character reductions
+                tok_reduction = round(max(0.0, (1 - after_tokens / before_tokens) * 100), 1)
+                char_reduction = round(max(0.0, (1 - after_chars / max(before_chars, 1)) * 100), 1)
+                chunk_delta = max(0, before_chunks_count - after_chunks_count)
 
                 w = CARD_WIDTH
-                print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}TOKEN REDUCTION BENCHMARK{RESET} {BORDER}{'─' * (w - 29)}╮{RESET}")
-                print(f"{BORDER}│{RESET}  Question: {WHITE_BOLD}{question}{RESET}")
-                print(f"{BORDER}│{RESET}  Target:   {PEACH}{active_file.name}{RESET}")
+                title = "TOKEN REDUCTION BENCHMARK"
+                dashes = max(2, w - 4 - len(title))
+                print(f"\n{BORDER}╭─{RESET} {ORANGE_BOLD}{title}{RESET} {BORDER}{'─' * dashes}╮{RESET}")
+
+                avail_q = w - 16
+                print(f"{BORDER}│{RESET}  Question: {WHITE_BOLD}{question[:avail_q]:<{avail_q}}{RESET}  {BORDER}│{RESET}")
+                avail_t = w - 16
+                print(f"{BORDER}│{RESET}  Target:   {PEACH}{target_display[:avail_t]:<{avail_t}}{RESET}  {BORDER}│{RESET}")
                 print(f"{BORDER}├{'─' * (w - 2)}┤{RESET}")
-                print(f"{BORDER}│{RESET}  Strategy             Tokens        Characters     Chunks    Proven Citations")
-                print(f"{BORDER}│{RESET}  {GRAY}{'─' * (w - 6)}{RESET}")
-                print(f"{BORDER}│{RESET}  Naive RAG          {before_tokens:>8} tok    {before_chars:>10} chars   {len(before.facts):>6}     0 (unverified)")
-                print(f"{BORDER}│{RESET}  PathContext Graph  {after_tokens:>8} tok    {after_chars:>10} chars   {len(after.facts):>6}     {len(after.facts)} (ranked & cited)")
+
+                col_strat = 18
+                col_tok = 12
+                col_char = 14
+                col_chunk = 8
+                col_cite = 24
+                header = f"  {'Strategy':<{col_strat}} {'Tokens':>{col_tok}} {'Characters':>{col_char}} {'Chunks':>{col_chunk}}   {'Proven Citations':<{col_cite}}"
+                print(f"{BORDER}│{RESET}{header} {BORDER}│{RESET}")
+                print(f"{BORDER}│{RESET}  {GRAY}{'─' * (w - 6)}{RESET}  {BORDER}│{RESET}")
+
+                r1 = f"  {GRAY}{'Naive RAG':<{col_strat}}{RESET} {before_tokens:>{col_tok - 4}} tok {before_chars:>{col_char - 6}} chars {before_chunks_count:>{col_chunk}}   {GRAY}{'0 (unverified)':<{col_cite}}{RESET}"
+                r2 = f"  {PEACH}{'PathContext Graph':<{col_strat}}{RESET} {after_tokens:>{col_tok - 4}} tok {after_chars:>{col_char - 6}} chars {after_chunks_count:>{col_chunk}}   {GREEN_BOLD}{f'{after_chunks_count} (ranked & cited)':<{col_cite}}{RESET}"
+                print(f"{BORDER}│{RESET}{r1} {BORDER}│{RESET}")
+                print(f"{BORDER}│{RESET}{r2} {BORDER}│{RESET}")
                 print(f"{BORDER}├{'─' * (w - 2)}┤{RESET}")
-                print(f"{BORDER}│{RESET}  {GREEN_BOLD}Efficiency Gain:{RESET}   {GREEN_BOLD}-{tok_reduction}% tokens{RESET}  {GRAY}│{RESET}  {GREEN_BOLD}-{char_reduction}% context chars{RESET}  {GRAY}│{RESET}  {GREEN_BOLD}{len(before.facts) - len(after.facts)} fewer chunks{RESET}")
+
+                gain_str = f"Efficiency Gain:   {tok_reduction}% fewer tokens  │  {char_reduction}% fewer chars  │  {chunk_delta} fewer chunk{'s' if chunk_delta != 1 else ''}"
+                avail_g = w - 6
+                print(f"{BORDER}│{RESET}  {GREEN_BOLD}{gain_str[:avail_g]:<{avail_g}}{RESET}  {BORDER}│{RESET}")
                 print(f"{BORDER}╰{'─' * (w - 2)}╯{RESET}\n")
             except Exception as err:
                 print(f"{RED}Comparison failed:{RESET} {err}")
@@ -892,8 +994,10 @@ def run_cli_loop() -> int:
 
                     if all_candidates:
                         all_candidates.sort(key=lambda f: f.score, reverse=True)
-                        top_facts = all_candidates[:4]
-                        if top_facts and top_facts[0].score > 0:
+                        if all_candidates and all_candidates[0].score > 0:
+                            top_score = all_candidates[0].score
+                            # Prune weak candidates from unrelated documents to keep evidence strictly relevant
+                            top_facts = [f for f in all_candidates if f.score >= top_score * 0.6][:4]
                             context = "\n".join(f"- {fact.text} [citation: {' -> '.join(fact.path)}]" for fact in top_facts)
                             packet = EvidencePacket(
                                 context=context,

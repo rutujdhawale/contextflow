@@ -17,7 +17,7 @@ ingest.log
 # Large local files in data directory (preserve sample test document)
 data/files/*.pdf
 !data/files/.gitkeep
-!data/files/system_architecture.md
+!data/files/*.md
 
 # Snapshots: exclude massive 8MB DB text, preserve instant test snapshots
 snapshots/FundamentalsofDatabaseSystems.snapshot.json
